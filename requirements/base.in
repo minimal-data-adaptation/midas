@@ -1,0 +1,22 @@
+chex==0.1.90
+distrax==0.1.5
+flax==0.10.2
+gym==0.26.2
+h5py>=3.11,<4
+jax==0.5.3
+moviepy>=2,<3
+numpy>=1.26,<2
+optax==0.2.4
+orbax-checkpoint==0.11.13
+pandas>=2.2,<3
+pillow>=11,<12
+python-dateutil>=2.9,<3
+pyyaml>=6,<7
+pytest>=9,<10
+tqdm>=4.66,<5
+transformers==4.53.2
+wandb>=0.19,<1
+
+# Editable installs use --no-build-isolation, so the backend must be locked.
+editables==0.5
+hatchling==1.27.0
