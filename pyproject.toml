@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "midas"
+version = "0.1.0"
+description = "Residual policy-agnostic reinforcement learning on frozen vision-language-action policies"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = {file = "LICENSE"}
+authors = [{name = "Shreyas Kowshik"}]
+dependencies = [
+  "chex==0.1.90",
+  "distrax==0.1.5",
+  "flax==0.10.2",
+  "gym==0.26.2",
+  "h5py>=3.11,<4",
+  "jax==0.5.3",
+  "moviepy>=2,<3",
+  "numpy>=1.26,<2",
+  "optax==0.2.4",
+  "orbax-checkpoint==0.11.13",
+  "pandas>=2.2,<3",
+  "pillow>=11,<12",
+  "python-dateutil>=2.9,<3",
+  "pyyaml>=6,<7",
+  "tqdm>=4.66,<5",
+  "transformers==4.53.2",
+  "wandb>=0.19,<1",
+]
+
+[project.optional-dependencies]
+pygame = ["pygame>=2.6,<3"]
+robocasa = [
+  "bddl==3.5.0",
+  "gymnasium>=1.0,<2",
+  "hidapi>=0.14,<1",
+  "imageio>=2.36,<3",
+  "lxml>=5,<7",
+  "mujoco==3.3.1",
+  "numba==0.61.2",
+  "opencv-python>=4.10,<5",
+  "pygame>=2.6,<3",
+  "pynput>=1.7,<2",
+  "scipy==1.15.3",
+  "termcolor>=2,<4",
+  "tianshou==0.4.10",
+]
+
+[project.urls]
+Repository = "https://github.com/shreyas-kowshik/midas"
+
+[tool.hatch.build.targets.wheel]
+packages = ["midas"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/midas",
+  "/README.md",
+  "/LICENSE",
+  "/THIRD_PARTY_NOTICES.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["slow: expensive learner or simulator smoke test"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cpu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: 3.11.11
+          activate-environment: midas-ci
+          auto-activate-base: false
+      - name: Install locked environment
+        shell: bash -el {0}
+        run: bash scripts/install_profile.sh ci-cpu
+      - name: Test and build
+        shell: bash -el {0}
+        env:
+          LIBERO_CONFIG_PATH: ${{ runner.temp }}/libero-config
+          XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+        run: |
+          bash scripts/smoke_cpu.sh
+          python -m build
+          git diff --check
