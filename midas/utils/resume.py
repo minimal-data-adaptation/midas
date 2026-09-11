@@ -31,7 +31,7 @@ import json
 import os
 import pathlib
 import shutil
-from typing import Dict, List, Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 
 class ResumeInfo(TypedDict):
@@ -130,7 +130,7 @@ def resolve_resume(resume_dir: str) -> ResumeInfo:
             info: ResumeInfo = {
                 'step': step,
                 'agent_dir': str(agent_dir),
-                'format_version': 2,
+                'format_version': format_version,
                 'online_buffer_path': None,
                 'success_buffer_path': None,
                 'online_delta_paths': [str(resume_dir_p / r) for r in online_files],

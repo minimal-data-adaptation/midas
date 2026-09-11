@@ -13,8 +13,7 @@ import csv
 import json
 import os
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 from tqdm import tqdm
 import numpy as np
 import wandb
@@ -25,6 +24,12 @@ import math
 import PIL
 from midas.data.dataset import concat_recursive
 from midas.utils.resume import gc_old_snapshots
+from midas.utils.snapshots import (
+    SnapshotState,
+    _atomic_save,
+    _maybe_save_buffer_delta,
+    _seed_snapshot_state_from_resume,
+)
 from flax.core import frozen_dict
 
 
@@ -41,78 +46,6 @@ def _zero_pad_actions(actions, env_action_dim):
     padded = np.zeros(actions.shape[:-1] + (env_action_dim,), dtype=actions.dtype)
     padded[..., :actions.shape[-1]] = actions
     return padded
-
-
-@dataclass
-class _BufferSnapshotState:
-    """Live state for incremental delta snapshots of one ReplayBuffer.
-
-    ``prev_traj_count`` is the high-water mark of trajectory ids already
-    persisted to disk. ``prev_delta_files`` is the cumulative list of
-    relative paths in load order — re-emitted unchanged on no-op saves so
-    the JSON manifest never silently drops history.
-    """
-    prev_traj_count: int = 0
-    prev_delta_files: List[str] = field(default_factory=list)
-
-
-@dataclass
-class SnapshotState:
-    online: _BufferSnapshotState = field(default_factory=_BufferSnapshotState)
-    success: _BufferSnapshotState = field(default_factory=_BufferSnapshotState)
-
-
-def _seed_snapshot_state_from_resume(resume_info) -> SnapshotState:
-    """Construct a SnapshotState from a v2 ResumeInfo manifest.
-
-    Paths in the manifest are stored relative to ``save_dir``; the writer
-    re-uses them verbatim on subsequent saves. v1 snapshots seed with empty
-    state — the next save then writes a single ``0_<n>.pkl`` upgrade delta.
-    """
-    state = SnapshotState()
-    if resume_info is None or resume_info.get('format_version', 1) < 2:
-        return state
-    train_state = resume_info['train_state']
-    online = train_state.get('online', {})
-    success = train_state.get('success', {})
-    state.online.prev_traj_count = int(online.get('traj_count', 0))
-    state.online.prev_delta_files = list(online.get('delta_files', []) or [])
-    state.success.prev_traj_count = int(success.get('traj_count', 0))
-    state.success.prev_delta_files = list(success.get('delta_files', []) or [])
-    return state
-
-
-def _atomic_save(write_fn, final_path):
-    """Run ``write_fn(tmp_path)`` then atomically rename to ``final_path``.
-
-    A pre-emption between the write and the rename leaves the partial file at
-    ``<final_path>.tmp`` rather than at ``final_path``, so downstream resume
-    logic that keys off the final filename never sees a half-written file.
-    """
-    tmp_path = final_path + '.tmp'
-    write_fn(tmp_path)
-    os.replace(tmp_path, final_path)
-
-
-def _maybe_save_buffer_delta(buffer, name, save_dir, state: _BufferSnapshotState) -> None:
-    """If ``buffer`` has new trajectories since the last save, write one delta.
-
-    Updates ``state.prev_traj_count`` and appends to ``state.prev_delta_files``
-    in place. No-op when the buffer has not advanced; callers still re-emit
-    the cumulative list in the manifest so resume sees full history.
-    """
-    if buffer is None:
-        return
-    cur = buffer._traj_counter
-    if cur <= state.prev_traj_count:
-        return
-    rel = os.path.join('replay_buffer', name, f'{state.prev_traj_count}_{cur}.h5')
-    abs_path = os.path.join(save_dir, rel)
-    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    since = state.prev_traj_count
-    _atomic_save(lambda p: buffer.save_delta(p, since), abs_path)
-    state.prev_delta_files.append(rel)
-    state.prev_traj_count = cur
 
 
 def _save_resume_snapshot(variant, agent, online_replay_buffer, success_replay_buffer,
