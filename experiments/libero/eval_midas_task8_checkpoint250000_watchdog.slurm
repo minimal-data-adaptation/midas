@@ -6,15 +6,21 @@
 #SBATCH --time=03:00:00
 #SBATCH --partition=maxlab-cpu
 #SBATCH --qos=maxlab_cpu_qos
-#SBATCH --output=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.out
-#SBATCH --error=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.err
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
 
 set -uo pipefail
 
-REPO_DIR=/home/skowshik/vla/codebase/midas/midas
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+export MIDAS_REPO_DIR="$REPO_DIR"
+# shellcheck source=../../scripts/experiment_env.sh
+source "$REPO_DIR/scripts/experiment_env.sh"
+midas_require_storage_roots
+
 EVAL_LAUNCHER="$REPO_DIR/experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm"
-OUTPUT_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_evals/pi05_base_v1/midas_t8_both_mokapots_s0_ckpt250000_no_perturbations_50rollouts
-STATE_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_evals/watchdog
+OUTPUT_DIR="${OUTPUT_DIR:-$MIDAS_DATA_ROOT/midas_evals/pi05_base_v1/midas_t8_both_mokapots_s0_ckpt250000_no_perturbations_50rollouts}"
+STATE_DIR="${STATE_DIR:-$MIDAS_DATA_ROOT/midas_evals/watchdog}"
 STATE_FILE="$STATE_DIR/midas_t8_ckpt250000_clean.state"
 WATCHDOG_SCRIPT="$REPO_DIR/experiments/libero/eval_midas_task8_checkpoint250000_watchdog.slurm"
 CHECK_INTERVAL=${MIDAS_EVAL_WATCHDOG_INTERVAL:-300}

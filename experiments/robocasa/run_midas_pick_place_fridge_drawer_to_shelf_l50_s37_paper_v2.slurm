@@ -8,20 +8,24 @@
 #SBATCH --partition=preempt
 #SBATCH --requeue
 #SBATCH --exclude=babel-w9-26
-#SBATCH --output=/home/skowshik/vla/codebase/midas/midas/experiments/robocasa/%x_%j.out
-#SBATCH --error=/home/skowshik/vla/codebase/midas/midas/experiments/robocasa/%x_%j.err
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
 
 set -euo pipefail
 
 # RoboCasa MIDAS equivalent of the residual PA-RL paper-v2 fridge job.
 # PickPlaceFridgeDrawerToShelf, layout 50, style 37, seed 0.
 
-source /data/user_data/skowshik/anaconda3/etc/profile.d/conda.sh
-conda activate /data/group_data/maxlab/common_datasets/skowshik/conda_envs/midas-robocasa
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+export MIDAS_REPO_DIR="$REPO_DIR"
+# shellcheck source=../../scripts/experiment_env.sh
+source "$REPO_DIR/scripts/experiment_env.sh"
+midas_require_storage_roots
+midas_activate_conda "${MIDAS_ROBOCASA_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-robocasa}"
 
-REPO_DIR=/home/skowshik/vla/codebase/midas/midas
 EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_rc_ppfridge_l50s37_paper_v2_s0_a7_r1}"
-export MIDAS_EXP_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/robocasa/pi05_base_v1
+export MIDAS_EXP_DIR="${MIDAS_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/robocasa/pi05_base_v1}"
 
 cd "$REPO_DIR"
 mkdir -p "$MIDAS_EXP_DIR"
@@ -32,18 +36,22 @@ export DISPLAY=:0
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 export OPENPI_DATA_HOME=/data/hf_cache/pi-models/openpi
-export OPENPI_DATASET_ROOT=/data/group_data/maxlab/common_datasets/skowshik/robocasa_assets
-export ROBOCASA_EVAL_DATA_ROOT=/home/skowshik/vla/codebase/openpi/data_dumps/robocasa
+export OPENPI_DATASET_ROOT="${OPENPI_DATASET_ROOT:-$MIDAS_DATA_ROOT/robocasa_assets}"
+: "${ROBOCASA_EVAL_DATA_ROOT:?Set ROBOCASA_EVAL_DATA_ROOT before submitting this job}"
+export ROBOCASA_EVAL_DATA_ROOT
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 export PYTHONUNBUFFERED=1
 export PYTHONNOUSERSITE=1
-export PYTHONPATH="/home/skowshik/vla/codebase/openpi_robocasa/robocasa${PYTHONPATH:+:$PYTHONPATH}"
-export WANDB_ENTITY=skowshik-carnegie-mellon-university
+ROBOCASA_SOURCE_DIR="${ROBOCASA_SOURCE_DIR:-$REPO_DIR/robocasa}"
+export PYTHONPATH="$ROBOCASA_SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}"
+: "${WANDB_ENTITY:?Set WANDB_ENTITY before submitting this job}"
+export WANDB_ENTITY
 
 T_CONFIG=midas_pi05_robocasa_pick_place_fridge_drawer_to_shelf_l50_s37
 SOURCE_CONFIG=pi05_robocasa_single_task_lora_vision_fullft_action_pick_place_fridge_drawer_to_shelf_l50_s37
-T_CKPT=/data/group_data/maxlab/common_datasets/skowshik/pi05_robocasa/${SOURCE_CONFIG}/${SOURCE_CONFIG}-v1/4000
+MIDAS_ROBOCASA_POLICY_ROOT="${MIDAS_ROBOCASA_POLICY_ROOT:-$MIDAS_DATA_ROOT/pi05_robocasa}"
+T_CKPT="${T_CKPT:-$MIDAS_ROBOCASA_POLICY_ROOT/${SOURCE_CONFIG}/${SOURCE_CONFIG}-v1/4000}"
 
 # Requeued jobs resume once a complete agent/replay snapshot exists.
 RESUME_ARGS=()

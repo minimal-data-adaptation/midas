@@ -5,16 +5,23 @@
 #SBATCH --mem=2G
 #SBATCH --time=03:00:00
 #SBATCH --partition=maxlab-cpu
-#SBATCH --output=/home/skowshik/vla/codebase/midas/midas/experiments/midas_watchdog_%j.out
-#SBATCH --error=/home/skowshik/vla/codebase/midas/midas/experiments/midas_watchdog_%j.err
+#SBATCH --output=midas_watchdog_%j.out
+#SBATCH --error=midas_watchdog_%j.err
 
 set -uo pipefail
 
-REPO_DIR=/home/skowshik/vla/codebase/midas/midas
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}}"
+export MIDAS_REPO_DIR="$REPO_DIR"
+# shellcheck source=../scripts/experiment_env.sh
+source "$REPO_DIR/scripts/experiment_env.sh"
+midas_require_storage_roots
+
 WATCHDOG_SCRIPT="$REPO_DIR/experiments/midas_watchdog.slurm"
-STATE_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/watchdog
-LIBERO_EXP_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/pi05_base_v1
-ROBOCASA_EXP_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/robocasa/pi05_base_v1
+STATE_DIR="${STATE_DIR:-$MIDAS_DATA_ROOT/midas_exps/watchdog}"
+LIBERO_EXP_DIR="${LIBERO_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/pi05_base_v1}"
+ROBOCASA_EXP_DIR="${ROBOCASA_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/robocasa/pi05_base_v1}"
+WATCHDOG_USER="${SLURM_JOB_USER:-${USER:-$(id -un)}}"
 CHECK_INTERVAL=${MIDAS_WATCHDOG_INTERVAL:-300}
 RUN_SECONDS=10740
 
@@ -34,7 +41,7 @@ record_state() {
 
 active_job_ids() {
     local job_name=$1
-    squeue -h -u "${USER:-skowshik}" -n "$job_name" \
+    squeue -h -u "$WATCHDOG_USER" -n "$job_name" \
         -t PENDING,RUNNING,CONFIGURING,COMPLETING,RESIZING,REQUEUED,SUSPENDED \
         -o '%A' 2>/dev/null | sort -u
 }
@@ -147,7 +154,7 @@ check_all_jobs() {
 }
 
 if [[ "${MIDAS_WATCHDOG_ONCE:-0}" != 1 && -n "${SLURM_JOB_ID:-}" ]]; then
-    other_running=$(squeue -h -u "${USER:-skowshik}" -n midas_watchdog \
+    other_running=$(squeue -h -u "$WATCHDOG_USER" -n midas_watchdog \
         -t RUNNING -o '%A' 2>/dev/null | awk -v self="$SLURM_JOB_ID" '$1 != self')
     if [[ -n "$other_running" ]]; then
         log "Another watchdog is already running ($other_running); exiting duplicate"

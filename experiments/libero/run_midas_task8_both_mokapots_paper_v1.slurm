@@ -7,20 +7,24 @@
 #SBATCH --mem=128G
 #SBATCH --time=2-00:00:00
 #SBATCH --requeue
-#SBATCH --output=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.out
-#SBATCH --error=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.err
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
 
 set -euo pipefail
 
 # LIBERO-10, episode-1 Pi-0.5 base, task 8: put both moka pots on the stove.
 # This is the MIDAS equivalent of run_parl_task8_both_mokapots_paper_v1.sh.
 
-source /data/user_data/skowshik/anaconda3/etc/profile.d/conda.sh
-conda activate /data/group_data/maxlab/common_datasets/skowshik/conda_envs/midas-libero
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+export MIDAS_REPO_DIR="$REPO_DIR"
+# shellcheck source=../../scripts/experiment_env.sh
+source "$REPO_DIR/scripts/experiment_env.sh"
+midas_require_storage_roots
+midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-libero}"
 
-REPO_DIR=/home/skowshik/vla/codebase/midas/midas
 EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s0-r2}"
-export MIDAS_EXP_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/pi05_base_v1
+export MIDAS_EXP_DIR="${MIDAS_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/pi05_base_v1}"
 
 cd "$REPO_DIR"
 mkdir -p "$MIDAS_EXP_DIR"
@@ -34,12 +38,13 @@ export OPENPI_DATA_HOME=/data/hf_cache/pi-models/openpi
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 export PYTHONNOUSERSITE=1
-export WANDB_ENTITY=skowshik-carnegie-mellon-university
+: "${WANDB_ENTITY:?Set WANDB_ENTITY before submitting this job}"
+export WANDB_ENTITY
 mkdir -p "$LIBERO_CONFIG_PATH"
 
 T_CONFIG=midas_pi05_libero10_both_mokapots_stove_ep1
-T_CKPT=/data/group_data/maxlab/common_datasets/pi05_common/pi05_libero10_both_mokapots_stove_ep1_ep86_filtered-v1/16000
-DEMO_HDF5=/data/group_data/maxlab/common_datasets/skowshik/expert_hdf5/libero10_task8_put_both_moka_pots_on_the_stove_ep86.hdf5
+T_CKPT="${T_CKPT:-$MIDAS_SHARED_DATA_ROOT/pi05_common/pi05_libero10_both_mokapots_stove_ep1_ep86_filtered-v1/16000}"
+DEMO_HDF5="${DEMO_HDF5:-$MIDAS_DATA_ROOT/expert_hdf5/libero10_task8_put_both_moka_pots_on_the_stove_ep86.hdf5}"
 
 # A requeued preempt job resumes the latest complete agent + replay-buffer
 # snapshot. If preemption happens before the first checkpoint, it starts fresh.

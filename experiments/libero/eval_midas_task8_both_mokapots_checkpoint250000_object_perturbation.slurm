@@ -8,8 +8,8 @@
 #SBATCH --mem=128G
 #SBATCH --time=01:00:00
 #SBATCH --requeue
-#SBATCH --output=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.out
-#SBATCH --error=/home/skowshik/vla/codebase/midas/midas/experiments/libero/%x_%j.err
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
 
 set -euo pipefail
 
@@ -17,14 +17,18 @@ set -euo pipefail
 # MIDAS checkpoint. The generated suite replaces the moka-pot object class
 # according to LIBERO-PRO's OOD object configuration.
 
-source /data/user_data/skowshik/anaconda3/etc/profile.d/conda.sh
-conda activate /data/group_data/maxlab/common_datasets/skowshik/conda_envs/midas-libero
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+export MIDAS_REPO_DIR="$REPO_DIR"
+# shellcheck source=../../scripts/experiment_env.sh
+source "$REPO_DIR/scripts/experiment_env.sh"
+midas_require_storage_roots
+midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-libero}"
 
-REPO_DIR=/home/skowshik/vla/codebase/midas/midas
-CHECKPOINT_DIR=/data/group_data/maxlab/common_datasets/skowshik/midas_exps/pi05_base_v1/midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s0-r2/checkpoint250000
-BASE_POLICY_CHECKPOINT=/data/group_data/maxlab/common_datasets/pi05_common/pi05_libero10_both_mokapots_stove_ep1_ep86_filtered-v1/16000
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-$MIDAS_DATA_ROOT/midas_exps/pi05_base_v1/midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s0-r2/checkpoint250000}"
+BASE_POLICY_CHECKPOINT="${BASE_POLICY_CHECKPOINT:-$MIDAS_SHARED_DATA_ROOT/pi05_common/pi05_libero10_both_mokapots_stove_ep1_ep86_filtered-v1/16000}"
 EVAL_NAME=midas_t8_both_mokapots_s0_ckpt250000_object_perturbation_50rollouts
-EVAL_ROOT=/data/group_data/maxlab/common_datasets/skowshik/midas_evals/pi05_base_v1
+EVAL_ROOT="${EVAL_ROOT:-$MIDAS_DATA_ROOT/midas_evals/pi05_base_v1}"
 OUTPUT_DIR="$EVAL_ROOT/$EVAL_NAME"
 PERTURB_SUITE_ROOT="$EVAL_ROOT/perturbation_suites"
 LIBERO_TASK=KITCHEN_SCENE8_put_both_moka_pots_on_the_stove
