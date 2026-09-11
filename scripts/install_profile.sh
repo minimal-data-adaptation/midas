@@ -9,13 +9,19 @@ case "$profile" in
   robocasa)
     simulator="robocasa"
     ;;
+  real)
+    simulator=""
+    ;;
   *)
-    echo "usage: $0 {libero|robocasa|ci-cpu}" >&2
+    echo "usage: $0 {libero|robocasa|real|ci-cpu}" >&2
     exit 2
     ;;
 esac
 
 python -m pip install --require-hashes -r "locks/lock-${profile}.txt"
-python -m pip install --no-deps --no-build-isolation -e . -e openpi \
-  -e openpi/packages/openpi-client -e "$simulator"
+editables=(-e . -e openpi -e openpi/packages/openpi-client)
+if [[ -n "$simulator" ]]; then
+  editables+=(-e "$simulator")
+fi
+python -m pip install --no-deps --no-build-isolation "${editables[@]}"
 python tools/verify_lock_coverage.py --profile "$profile"

@@ -16,6 +16,7 @@ LOCKS = {
     "libero": ROOT / "locks" / "lock-libero.txt",
     "robocasa": ROOT / "locks" / "lock-robocasa.txt",
     "ci-cpu": ROOT / "locks" / "lock-ci-cpu.txt",
+    "real": ROOT / "locks" / "lock-real.txt",
 }
 
 

@@ -1,0 +1,3 @@
+pi_05_config: pi05_yam_combined_lora
+instruction: perform the task
+demo_repo_id: local/yam_combined

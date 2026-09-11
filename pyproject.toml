@@ -32,6 +32,11 @@ dependencies = [
 
 [project.optional-dependencies]
 pygame = ["pygame>=2.6,<3"]
+real = [
+  "imageio-ffmpeg==0.6.0",
+  "lerobot==0.3.3",
+  "websockets>=11,<17",
+]
 robocasa = [
   "bddl==3.5.0",
   "gymnasium>=1.0,<2",

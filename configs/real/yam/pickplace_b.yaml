@@ -1,0 +1,5 @@
+pi_05_config: pi05_yam_pickplace_b_lora
+instruction: put the green block in the right bin and the blue block in the left bin
+demo_repo_id: local/yam_combined
+demo_filter_prompt: put the green block in the right bin and the blue block in the left bin
+demo_filter_orig_traj_id_6_min: 14512

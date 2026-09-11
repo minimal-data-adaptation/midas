@@ -1,0 +1,5 @@
+pi_05_config: pi05_yam_wipe_a_lora
+instruction: Wipe the black tray with the white cloth
+demo_repo_id: local/yam_combined
+demo_filter_prompt: Wipe the black tray with the white cloth
+demo_filter_orig_traj_id_6_eq: 43505

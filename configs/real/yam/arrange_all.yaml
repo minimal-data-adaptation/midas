@@ -1,0 +1,4 @@
+pi_05_config: pi05_yam_arrange_all_lora
+instruction: place the knife and the donut on the plate
+demo_repo_id: local/yam_combined
+demo_filter_prompt: place the knife and the donut on the plate

@@ -1,0 +1,6 @@
+-r base.in
+-r openpi.in
+
+# Offline YAM demonstration loading. The hardware driver remains external.
+lerobot==0.3.3
+imageio-ffmpeg==0.6.0
