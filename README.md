@@ -3,11 +3,12 @@
 MIDAS is residual policy-agnostic reinforcement learning for adapting a frozen
 vision-language-action policy. The frozen Pi-0.5 policy proposes action chunks;
 MIDAS learns bounded residual actions from online interaction. This release
-supports LIBERO and RoboCasa simulation.
+supports LIBERO and RoboCasa simulation plus a separately isolated YAM
+bimanual real-world workflow.
 
-Real-world/YAM training, other RL algorithms, plotting utilities, and
-research-era checkpoints are intentionally out of scope. Checkpoints created by
-the pre-release research package are not compatible with the renamed MIDAS state.
+Other RL algorithms, plotting utilities, and research-era checkpoints are
+intentionally out of scope. Checkpoints created by the pre-release research
+package are not compatible with the renamed MIDAS state.
 
 ## Environment setup
 
@@ -51,6 +52,17 @@ python -m pip check  # see the documented fork-metadata exceptions below
 bash scripts/smoke_cpu.sh
 ```
 
+YAM real-world training (the robot driver is supplied separately):
+
+```bash
+conda env create -f environment-real.yml
+conda activate midas-real
+bash scripts/install_profile.sh real
+# Install the site-specific yam_teleop package into this environment.
+python -m pip check  # the unrelated gym-aloha metadata exception is documented below
+PYTHON_BIN=python bash scripts/real/yam/smoke_mock.sh
+```
+
 For an NVIDIA GPU, install the CUDA JAX overlay after the profile lock:
 
 ```bash
@@ -59,6 +71,91 @@ export MUJOCO_GL=egl
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 ```
+
+### Configure machine-specific experiment paths
+
+Do not edit the checked-in launchers to insert usernames, checkout locations,
+or cluster storage paths. Keep those values in a per-user shell file outside
+the repository and source it before calling `sbatch`. For example:
+
+```bash
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/midas"
+${EDITOR:-vi} "${XDG_CONFIG_HOME:-$HOME/.config}/midas/experiments.env"
+```
+
+Put the following template in `experiments.env`, replacing every value in
+angle brackets with a path or account name appropriate for your machine:
+
+```bash
+# Core settings. MIDAS_DATA_ROOT is required. MIDAS_REPO_DIR is strongly
+# recommended for Slurm, and WANDB_ENTITY is required by training launchers.
+export MIDAS_REPO_DIR="<absolute-path-to-this-midas-checkout>"
+export MIDAS_DATA_ROOT="<absolute-path-to-your-writable-midas-data>"
+# Required on compute nodes where Conda is not already initialized.
+export MIDAS_CONDA_SH="<absolute-path-to-conda>/etc/profile.d/conda.sh"
+export WANDB_ENTITY="<your-wandb-entity>"
+
+# Shared, read-only datasets and base checkpoints. If omitted, this defaults
+# to the parent directory of MIDAS_DATA_ROOT.
+export MIDAS_SHARED_DATA_ROOT="<absolute-path-to-shared-datasets>"
+
+# Required by the checked-in RoboCasa jobs because evaluation reset data is
+# not distributed in this repository.
+export ROBOCASA_EVAL_DATA_ROOT="<absolute-path-to-robocasa-evaluation-data>"
+
+# Optional overrides; these defaults are described below.
+export MIDAS_LIBERO_CONDA_ENV="<conda-env-name-or-absolute-prefix>"
+export MIDAS_ROBOCASA_CONDA_ENV="<conda-env-name-or-absolute-prefix>"
+export OPENPI_DATASET_ROOT="<absolute-path-to-robocasa-assets>"
+export MIDAS_ROBOCASA_POLICY_ROOT="<absolute-path-to-pi05-robocasa-checkpoints>"
+export ROBOCASA_SOURCE_DIR="<absolute-path-to-robocasa-source>"
+```
+
+The defaults assume this layout beneath `MIDAS_DATA_ROOT`:
+
+```text
+<MIDAS_DATA_ROOT>/
+├── conda_envs/
+│   ├── midas-libero/
+│   └── midas-robocasa/
+├── expert_hdf5/
+├── midas_evals/
+├── midas_exps/
+├── pi05_robocasa/
+└── robocasa_assets/
+```
+
+`MIDAS_SHARED_DATA_ROOT` is expected to contain shared resources such as
+`pi05_common/`. `ROBOCASA_SOURCE_DIR` defaults to the bundled `robocasa/`
+checkout. You may omit an optional variable when that default matches your
+layout.
+
+Load the settings and verify the important locations before submitting:
+
+```bash
+source "${XDG_CONFIG_HOME:-$HOME/.config}/midas/experiments.env"
+
+test -f "$MIDAS_REPO_DIR/scripts/experiment_env.sh"
+test -f "$MIDAS_CONDA_SH"
+test -d "$MIDAS_DATA_ROOT"
+test -d "$MIDAS_SHARED_DATA_ROOT"
+
+cd "$MIDAS_REPO_DIR"
+sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_paper_v1.slurm
+```
+
+Submitting from the repository root is recommended. `MIDAS_REPO_DIR` makes
+the checkout location unambiguous when Slurm executes its spooled copy of a
+script, and `--export=ALL` ensures the configured values reach the job and any
+successor jobs submitted by a watchdog. Slurm output and error files use
+`%x_%j.out` and `%x_%j.err` in the submission directory.
+
+The most useful per-run overrides are `MIDAS_EXP_DIR`, `CHECKPOINT_DIR`,
+`BASE_POLICY_CHECKPOINT`, `EVAL_ROOT`, `T_CKPT`, and `DEMO_HDF5`. Set one only
+when a particular run does not follow the directory layout above; no launcher
+source edit is necessary. See
+[docs/EXPERIMENT_PATHS.md](docs/EXPERIMENT_PATHS.md) for the complete path
+configuration reference.
 
 See [docs/SETUP.md](docs/SETUP.md) for system packages, environment variables,
 CPU CI setup, lock regeneration, and troubleshooting.
@@ -160,7 +257,9 @@ python -m training.launch_train_sim --env cartpole --max_steps 1 \
 ```
 
 Simulator details are in [docs/LIBERO.md](docs/LIBERO.md) and
-[docs/ROBOCASA.md](docs/ROBOCASA.md). Public artifact records and hashes live in
+[docs/ROBOCASA.md](docs/ROBOCASA.md). Real-world setup, safety gates, task
+profiles, launch ordering, resume, and evaluation are in
+[docs/REAL_WORLD.md](docs/REAL_WORLD.md). Public artifact records and hashes live in
 `midas/artifacts_index.json`; no trained artifacts are bundled in v0.1.0.
 
 ## License and attribution
