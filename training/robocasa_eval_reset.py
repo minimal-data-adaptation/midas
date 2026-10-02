@@ -21,6 +21,8 @@ import pathlib
 
 import numpy as np
 
+from midas.utils.reproducibility import capture_numpy_rng, restore_numpy_rng
+
 logger = logging.getLogger(__name__)
 
 
@@ -136,6 +138,28 @@ class RoboCasaEvalResetController:
     def last_reset_info(self) -> dict | None:
         """The reset info dict from the most recent prepare_reset() call."""
         return self._last_reset_info
+
+    def seed(self, seed: int) -> None:
+        """Reset sampling and exact-replay ordering for an independent stream."""
+
+        self._rng = np.random.default_rng(int(seed))
+        self._replay_idx = 0
+        self._last_reset_info = None
+
+    def get_rng_state(self) -> dict:
+        """Capture random state and the exact-replay cursor."""
+
+        return {
+            "rng": capture_numpy_rng(self._rng),
+            "replay_idx": self._replay_idx,
+        }
+
+    def set_rng_state(self, state: dict) -> None:
+        """Restore state returned by :meth:`get_rng_state`."""
+
+        self._rng = restore_numpy_rng(self._rng, state["rng"])
+        self._replay_idx = int(state["replay_idx"])
+        self._last_reset_info = None
 
     def prepare_reset(self) -> dict:
         """Produce reset metadata for the next eval episode."""

@@ -26,6 +26,14 @@ class ThreadSafeReplayBuffer:
     def seed(self, seed: int) -> None:
         self.buffer.seed(seed)
 
+    def get_rng_state(self):
+        with self.lock:
+            return self.buffer.get_rng_state()
+
+    def set_rng_state(self, state) -> None:
+        with self.lock:
+            self.buffer.set_rng_state(state)
+
     def sample(self, batch_size: int):
         with self.lock:
             return self.buffer.sample(batch_size)

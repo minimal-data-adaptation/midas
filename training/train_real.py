@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 from pathlib import Path
 import signal
@@ -10,6 +11,13 @@ import signal
 from midas.real.config import RealRunSpec
 from midas.real.rewards import validate_reward_manifest
 from midas.utils.resume import gc_old_snapshots, resolve_resume, sweep_orphan_deltas
+from midas.utils.reproducibility import (
+    capture_training_rng_state,
+    decode_rng_state,
+    encode_rng_state,
+    restore_training_rng_state,
+    seed_process,
+)
 from midas.utils.snapshots import (
     SnapshotState,
     save_buffer_delta,
@@ -46,6 +54,8 @@ def _manifest(
     step: int,
     total_env_steps: int,
     actor_version: int,
+    env,
+    base_policy_rng_state=None,
 ) -> dict:
     def persisted_size(buffer, snapshot_state) -> int:
         count = int(snapshot_state.prev_traj_count)
@@ -53,8 +63,18 @@ def _manifest(
             return 0
         return int(buffer.buffer.traj_bounds[count - 1][1])
 
+    reproducibility_state = capture_training_rng_state(
+        env=env,
+        replay_buffer=replay,
+        success_replay_buffer=success_replay,
+    )
+    if base_policy_rng_state is not None:
+        # The frozen policy lives in the server process, so the trainer asks
+        # the server for this state explicitly at each trajectory boundary.
+        reproducibility_state["base_policy"] = base_policy_rng_state
+
     return {
-        "format_version": 3,
+        "format_version": 4,
         "step": int(step),
         "total_env_steps": int(total_env_steps),
         "reward_type": variant.reward_type,
@@ -68,6 +88,7 @@ def _manifest(
         "chunk_len": spec.chunk_len,
         "query_freq": spec.query_freq,
         "server_actor_version": int(actor_version),
+        "reproducibility_state": encode_rng_state(reproducibility_state),
         "online": {
             "traj_count": snapshots.online.prev_traj_count,
             "size": persisted_size(replay, snapshots.online),
@@ -97,7 +118,9 @@ def _restore_replays(info, replay, success_replay) -> None:
         success_replay.append_delta(path)
 
 
-def _save_initial_buffer(output, variant, spec, replay, success_replay, snapshots) -> None:
+def _save_initial_buffer(
+    output, variant, spec, replay, success_replay, snapshots, env, client
+) -> None:
     with replay.lock:
         save_buffer_delta(replay.buffer, "online", output, snapshots.online)
     if success_replay is not None:
@@ -112,6 +135,8 @@ def _save_initial_buffer(output, variant, spec, replay, success_replay, snapshot
         step=0,
         total_env_steps=0,
         actor_version=-1,
+        env=env,
+        base_policy_rng_state=client.get_base_rng_state(),
     )
     manifest["phase"] = "pre_bc_warmup"
     write_json_manifest(manifest, output / "initial_buffer.json")
@@ -146,13 +171,20 @@ def _bc_warmup(variant, agent, replay, logger) -> int:
 
 
 def main_real(variant, spec: RealRunSpec) -> None:
+    seed_process(variant.seed)
     output = _output_directory(variant)
     variant.outputdir = str(output)
     spec_path = output / "real_run_spec.json"
     if spec_path.exists():
         saved_spec = RealRunSpec.read(spec_path)
         if saved_spec.spec_hash != spec.spec_hash:
-            raise ValueError("Resume configuration does not match real_run_spec.json")
+            legacy_compatible = (
+                saved_spec.policy_seed is None
+                and saved_spec.spec_hash
+                == dataclasses.replace(spec, policy_seed=None).spec_hash
+            )
+            if not legacy_compatible:
+                raise ValueError("Resume configuration does not match real_run_spec.json")
         spec = saved_spec
     else:
         spec.write(spec_path)
@@ -228,6 +260,17 @@ def main_real(variant, spec: RealRunSpec) -> None:
         if resume_info is not None:
             agent.restore_checkpoint(resume_info["agent_dir"])
             _restore_replays(resume_info, replay, success_replay)
+            encoded_rng_state = resume_info["train_state"].get("reproducibility_state")
+            if encoded_rng_state:
+                reproducibility_state = decode_rng_state(encoded_rng_state)
+                restore_training_rng_state(
+                    reproducibility_state,
+                    env=env,
+                    replay_buffer=replay,
+                    success_replay_buffer=success_replay,
+                )
+                if reproducibility_state.get("base_policy") is not None:
+                    client.set_base_rng_state(reproducibility_state["base_policy"])
             start_step = int(resume_info["step"])
             start_total_env_steps = int(resume_info["train_state"].get("total_env_steps", 0))
         elif variant.restore_checkpoint_path:
@@ -259,7 +302,9 @@ def main_real(variant, spec: RealRunSpec) -> None:
                     norm_stats_path=variant.eval_rollout_norm_stats_path,
                     num_demos=-1,
                 )
-            _save_initial_buffer(output, variant, spec, replay, success_replay, snapshots)
+            _save_initial_buffer(
+                output, variant, spec, replay, success_replay, snapshots, env, client
+            )
             _bc_warmup(variant, agent, replay, logger)
 
         actor_version = client.update_actor_state(agent.export_actor_state())
@@ -281,6 +326,8 @@ def main_real(variant, spec: RealRunSpec) -> None:
                     step=0,
                     total_env_steps=0,
                     actor_version=actor_version,
+                    env=env,
+                    base_policy_rng_state=client.get_base_rng_state(),
                 ),
                 output / "train_state" / "0.json",
             )
@@ -302,6 +349,8 @@ def main_real(variant, spec: RealRunSpec) -> None:
                     step=step,
                     total_env_steps=total_env_steps,
                     actor_version=server_actor_version,
+                    env=env,
+                    base_policy_rng_state=client.get_base_rng_state(),
                 ),
                 output / "train_state" / f"{step}.json",
             )

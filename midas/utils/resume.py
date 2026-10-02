@@ -2,17 +2,18 @@
 
 Two on-disk formats are supported:
 
-**v2 (incremental deltas, current).** A complete snapshot at step ``S`` under
+**v2+ (incremental deltas, current).** A complete snapshot at step ``S`` under
 run directory ``save_dir`` consists of:
     save_dir/checkpoint<S>/                                 (Orbax agent ckpt)
     save_dir/replay_buffer/online/<lo>_<hi>.pkl             (global delta pool;
     save_dir/replay_buffer/success/<lo>_<hi>.pkl              cumulative chain)
     save_dir/train_state/<S>.json                           (manifest, written last)
 
-The JSON manifest carries ``format_version: 2`` and the cumulative
-``online.delta_files`` / ``success.delta_files`` lists (relative paths),
-plus ``traj_count`` / ``size`` mirrors. ``resolve_resume`` requires every
-listed delta file to exist before declaring a snapshot complete.
+The JSON manifest carries ``format_version >= 2`` and the cumulative
+``online.delta_files`` / ``success.delta_files`` lists (relative paths), plus
+``traj_count`` / ``size`` mirrors. Simulation format v3 and real-world format
+v4 additionally persist reproducibility state. ``resolve_resume`` requires
+every listed delta file to exist before declaring a snapshot complete.
 
 **v1 (legacy full-buffer pickle).** Older snapshots have:
     save_dir/checkpoint<S>/

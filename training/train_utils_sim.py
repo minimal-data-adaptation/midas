@@ -24,6 +24,18 @@ import math
 import PIL
 from midas.data.dataset import concat_recursive
 from midas.utils.resume import gc_old_snapshots
+from midas.utils.reproducibility import (
+    EVAL_SEED_OFFSET,
+    capture_component_rng_state,
+    capture_process_rng_state,
+    capture_training_rng_state,
+    encode_rng_state,
+    restore_component_rng_state,
+    restore_process_rng_state,
+    seed_component,
+    seed_environment,
+    seed_process,
+)
 from midas.utils.snapshots import (
     SnapshotState,
     _atomic_save,
@@ -50,17 +62,15 @@ def _zero_pad_actions(actions, env_action_dim):
 
 def _save_resume_snapshot(variant, agent, online_replay_buffer, success_replay_buffer,
                           wandb_logger, step, total_env_steps,
-                          snapshot_state: SnapshotState):
+                          snapshot_state: SnapshotState, env=None, agent_dp=None):
     """Persist agent ckpt + replay-buffer deltas + train_state JSON for pre-emption resume.
 
     Layout under ``variant.outputdir``:
         checkpoint<step>/                                  (Orbax — atomic tmp-dir + rename internally)
         replay_buffer/online/<lo>_<hi>.pkl                 (global delta pool; atomic .tmp + rename;
         replay_buffer/success/<lo>_<hi>.pkl                  cumulative chain across all saves)
-        train_state/<step>.json                            (manifest with format_version=2 and
-                                                            cumulative delta_files; written LAST
-                                                            atomically — its presence is the durable
-                                                            "snapshot complete" marker)
+        train_state/<step>.json                            (manifest with cumulative delta files and
+                                                            reproducibility state; written LAST)
 
     The strict write order makes resume robust to mid-save pre-emption:
     ``resolve_resume`` keys off ``train_state/<step>.json``, which is renamed
@@ -77,13 +87,20 @@ def _save_resume_snapshot(variant, agent, online_replay_buffer, success_replay_b
     wandb_run_id = wandb.run.id if (wandb_logger.wandb_logging and wandb.run is not None) else None
     launch_group_id = variant.get('launch_group_id', '')
     group_name = f"{variant.prefix}_{launch_group_id}" if launch_group_id else ''
+    reproducibility_state = capture_training_rng_state(
+        env=env,
+        base_policy=agent_dp,
+        replay_buffer=online_replay_buffer,
+        success_replay_buffer=success_replay_buffer,
+    )
     train_state = {
         'step': int(step),
         'total_env_steps': int(total_env_steps),
         'exp_name': os.path.basename(save_dir.rstrip('/')),
         'wandb_run_id': wandb_run_id,
         'group_name': group_name,
-        'format_version': 2,
+        'format_version': 3,
+        'reproducibility_state': encode_rng_state(reproducibility_state),
         'online': {
             'traj_count': int(online_replay_buffer._traj_counter),
             'size': int(online_replay_buffer.size),
@@ -320,10 +337,6 @@ def trajwise_alternating_training_loop_residual(
         agent_dp: Frozen base policy (Pi-0.5 / Pi-0).
         success_replay_buffer: Optional separate buffer for successful trajectories.
     """
-    replay_buffer_iterator = replay_buffer.get_iterator(variant.batch_size)
-    if shard_fn is not None:
-        replay_buffer_iterator = map(shard_fn, replay_buffer_iterator)
-
     # Success buffer configuration
     success_buffer_ratio = variant.get('success_buffer_ratio', 0.0)
     success_buffer_min_size = variant.get('success_buffer_min_size', 100)
@@ -372,18 +385,17 @@ def trajwise_alternating_training_loop_residual(
               f'(UTD={demo_bc_utd}, '
               f'critic_updates={bc_warmup_num_critic_updates}, '
               f'actor_updates={bc_warmup_num_actor_updates})')
-        demo_iterator = replay_buffer.get_iterator(variant.batch_size)
-        if shard_fn is not None:
-            demo_iterator = map(shard_fn, demo_iterator)
         for step in tqdm(range(demo_bc_steps), desc='demo BC warmup'):
             critic_info = {}
             for _ in range(bc_warmup_num_critic_updates):
-                batch = next(demo_iterator)
+                batch = replay_buffer.sample(variant.batch_size)
+                if shard_fn is not None:
+                    batch = shard_fn(batch)
                 critic_info = agent.update_critic(batch)
 
             actor_info = {}
             for _ in range(bc_warmup_num_actor_updates):
-                actor_batch = next(demo_iterator)
+                actor_batch = replay_buffer.sample(variant.batch_size)
                 if shard_fn is not None:
                     actor_batch = shard_fn(actor_batch)
                 actor_info = agent.update_actor_bc(actor_batch)
@@ -457,7 +469,11 @@ def trajwise_alternating_training_loop_residual(
                     if in_bc_warmup:
                         # BC warmup: distill base policy actions via MSE
                         for _ in range(curr_num_actor_updates):
-                            actor_batch = next(replay_buffer_iterator)
+                            # Sample synchronously so the replay RNG state in a
+                            # checkpoint identifies the exact next batch. The
+                            # old prefetch iterator kept two already-sampled
+                            # batches in an uncheckpointed host queue.
+                            actor_batch = replay_buffer.sample(variant.batch_size)
                             if shard_fn is not None:
                                 actor_batch = shard_fn(actor_batch)
                             actor_info = agent.update_actor_bc(actor_batch)
@@ -535,6 +551,7 @@ def trajwise_alternating_training_loop_residual(
                             variant, agent, online_replay_buffer, success_replay_buffer,
                             wandb_logger, step=i, total_env_steps=total_env_steps,
                             snapshot_state=snapshot_state,
+                            env=env, agent_dp=agent_dp,
                         )
 
 
@@ -660,8 +677,6 @@ def collect_traj_residual(variant, agent, env, i, agent_dp=None, agent_vlm=None)
     in_bc_warmup = (bc_warmup_steps > 0 and i < bc_warmup_steps)
     force_zero_residual = (i == 0 and use_zero_residual_initially) or in_bc_warmup
 
-    agent._rng, rng = jax.random.split(agent._rng)
-    
     if 'libero' in variant.env:
         obs = env.reset()
     elif variant.env == 'robocasa':
@@ -790,7 +805,6 @@ def collect_traj_residual(variant, agent, env, i, agent_dp=None, agent_vlm=None)
                 obs_dict['pixel_features'] = np.asarray(feat)[..., np.newaxis]
 
             # Sample actions from SAC
-            rng, key = jax.random.split(rng)
             if force_zero_residual:
                 # Zero residual: evaluate base policy (used for first traj or BC warmup)
                 delta_actions = np.zeros((query_frequency, variant.action_dim))
@@ -947,6 +961,39 @@ def collect_traj_residual(variant, agent, env, i, agent_dp=None, agent_vlm=None)
 
 
 def perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp=None, agent_vlm=None):
+    """Run evaluation on an isolated, repeatable random stream.
+
+    The frozen policy is intentionally shared with training because loading a
+    second VLA model can exceed GPU memory. Its RNG and all process-global RNGs
+    are restored afterward, so changing evaluation cadence cannot change later
+    training samples or base actions.
+    """
+
+    process_state = capture_process_rng_state()
+    policy_state = capture_component_rng_state(agent_dp)
+    vlm_policy_state = (
+        capture_component_rng_state(agent_vlm)
+        if agent_vlm is not None and agent_vlm is not agent_dp
+        else None
+    )
+    eval_seed = int(variant.seed) + EVAL_SEED_OFFSET
+    try:
+        seed_process(eval_seed)
+        seed_environment(env, eval_seed)
+        seed_component(agent_dp, eval_seed)
+        if agent_vlm is not None and agent_vlm is not agent_dp:
+            seed_component(agent_vlm, eval_seed + 2)
+        return _perform_control_eval_residual(
+            agent, env, i, variant, wandb_logger, agent_dp, agent_vlm
+        )
+    finally:
+        if agent_vlm is not None and agent_vlm is not agent_dp:
+            restore_component_rng_state(agent_vlm, vlm_policy_state)
+        restore_component_rng_state(agent_dp, policy_state)
+        restore_process_rng_state(process_state)
+
+
+def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp=None, agent_vlm=None):
     """Evaluate MIDAS policy.
     
     Uses the same logic as collect_traj_residual but without exploration noise.
@@ -1013,8 +1060,6 @@ def perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp
     first_success_rollout_id = None
     last_video = None
     last_rollout_id = None
-
-    rng = jax.random.PRNGKey(variant.seed + 456)
 
     for rollout_id in range(variant.eval_episodes):
         if 'libero' in variant.env:
@@ -1156,8 +1201,6 @@ def perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp
                     feat = agent.compute_pixel_features(obs_dict['pixels'])
                     obs_dict['pixel_features'] = np.asarray(feat)[..., np.newaxis]
 
-                rng, key = jax.random.split(rng)
-                
                 if i == 0:
                     # Initial evaluation: zero residual to test base policy
                     delta_actions = np.zeros((query_frequency, variant.action_dim))

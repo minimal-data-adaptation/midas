@@ -256,6 +256,20 @@ python -m training.launch_train_sim --env cartpole --max_steps 1 \
   --num_critic_updates 1 --num_actor_updates 1 --color_jitter 0
 ```
 
+### Seed and resume reproducibility
+
+`--seed` controls the learner, replay samplers, simulator/reset streams, and
+the frozen OpenPI policy (including its private PyTorch generator). Periodic
+evaluation uses a separate simulator stream and restores shared policy/global
+RNG state, so changing evaluation cadence does not change later training.
+
+Simulation v3 and real-world v4 manifests continue all software RNG streams
+after preemption. Older checkpoints remain loadable, but because they did not
+record those streams their resumed trajectory cannot exactly match an
+uninterrupted run. Bitwise equality still requires the same accelerator,
+driver, JAX/XLA stack, and deterministic kernels; physical robot rollouts are
+not expected to be bitwise repeatable.
+
 Simulator details are in [docs/LIBERO.md](docs/LIBERO.md) and
 [docs/ROBOCASA.md](docs/ROBOCASA.md). Real-world setup, safety gates, task
 profiles, launch ordering, resume, and evaluation are in

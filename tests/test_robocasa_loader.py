@@ -100,6 +100,11 @@ def test_scene_filtered_episode_resolution_does_not_require_openpi_groot_utils(
         eval_pool_object_categories=["apple"],
     )
     assert controller._pool_ids == [7]
+    state = controller.get_rng_state()
+    expected = controller.prepare_reset()["episode_id"]
+    controller.seed(99)
+    controller.set_rng_state(state)
+    assert controller.prepare_reset()["episode_id"] == expected
 
     (dataset / "meta" / "episodes.jsonl").unlink()
     (dataset / "manifest.json").write_text(json.dumps({

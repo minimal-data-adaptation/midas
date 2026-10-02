@@ -297,6 +297,7 @@ def build_run_spec(variant) -> RealRunSpec:
         ),
         reward_type=variant.reward_type,
         num_subtasks=variant.num_subtasks,
+        policy_seed=variant.seed,
         pi_config=variant.pi_05_config,
         pi_checkpoint=variant.pi_05_ckpt_dir,
         norm_stats_sha256=norm_hash,

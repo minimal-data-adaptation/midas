@@ -101,6 +101,16 @@ class RealPolicyClient:
         )
         return int(response["actor_version"])
 
+    def get_base_rng_state(self) -> Any | None:
+        """Return the frozen policy's private sampling state from the server."""
+
+        return self.call("get_base_rng_state").get("base_rng_state")
+
+    def set_base_rng_state(self, state: Any) -> None:
+        """Restore a base-policy state previously returned by the server."""
+
+        self.call("set_base_rng_state", base_rng_state=_host_tree(state))
+
     def disarm(self) -> None:
         self.call("disarm")
 

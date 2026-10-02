@@ -44,6 +44,9 @@ class RealRunSpec:
     midas_a_star_delta_clip_norm: tuple[float, ...] | None = None
     reward_type: str = "sparse"
     num_subtasks: int = 1
+    # ``None`` denotes a legacy v1 run spec, whose base policy implicitly used
+    # seed zero. New specs always record the experiment seed explicitly.
+    policy_seed: int | None = None
     pi_config: str = ""
     pi_checkpoint: str = ""
     norm_stats_sha256: str = ""
@@ -96,7 +99,11 @@ class RealRunSpec:
 
     @property
     def spec_hash(self) -> str:
-        return _canonical_hash(asdict(self))
+        fields = asdict(self)
+        # Preserve hashes of run specs written before policy_seed was added.
+        if self.policy_seed is None:
+            fields.pop("policy_seed")
+        return _canonical_hash(fields)
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)

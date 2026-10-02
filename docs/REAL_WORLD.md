@@ -34,7 +34,7 @@ PYTHON_BIN=python bash scripts/real/yam/smoke_mock.sh
 
 The smoke starts separate trainer and server processes, synchronizes the actor,
 collects from the deterministic mock YAM, performs an update, disarms the
-server, and verifies a v3 checkpoint/replay manifest. It never imports
+server, and verifies a v4 checkpoint/replay manifest. It never imports
 `yam_teleop` or uses a GPU.
 
 ## Data and policy preparation
@@ -149,11 +149,12 @@ bash scripts/real/yam/train.sh \
   --resume_dir /path/to/midas-real-runs/pickplace_a_run1
 ```
 
-The latest complete checkpoint/manifest pair is selected. v3 manifests record
+The latest complete checkpoint/manifest pair is selected. v4 manifests record
 the reward schema, actor signature, base-policy identity, norm-stat hash,
 query/chunk lengths, server actor version, environment steps, and incremental
-replay chains. Incompatible reward, actor, policy, or normalization contracts
-are rejected rather than migrated implicitly.
+replay chains, plus process, environment, learner, replay-sampler, and remote
+base-policy random state. Incompatible reward, actor, policy, or normalization
+contracts are rejected rather than migrated implicitly.
 
 ## Read-only evaluation
 

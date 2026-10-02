@@ -17,6 +17,10 @@ import websockets.asyncio.server
 
 from midas.real.config import REAL_PROTOCOL_VERSION, RealRunSpec
 from midas.real.protocol import error_response, validate_envelope
+from midas.utils.reproducibility import (
+    capture_component_rng_state,
+    restore_component_rng_state,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -116,6 +120,21 @@ class RealPolicy:
         if feature is not None:
             result["vlm_embedding"] = feature
         return result
+
+    async def get_base_rng_state(self) -> dict[str, Any]:
+        """Snapshot the server-owned frozen-policy sampling stream."""
+
+        async with self._lock:
+            return {"base_rng_state": capture_component_rng_state(self.base)}
+
+    async def set_base_rng_state(self, state: Any) -> dict[str, Any]:
+        """Restore the frozen-policy stream as part of trainer resume."""
+
+        if state is None:
+            raise ValueError("base_rng_state is required")
+        async with self._lock:
+            restore_component_rng_state(self.base, state)
+        return {"base_rng_state_restored": True}
 
     def _actor_observation(
         self, observation: dict, base: np.ndarray, feature: np.ndarray | None
@@ -246,6 +265,12 @@ class RealWebsocketServer:
                         result = self.policy.infer_base(message["observation"])
                     elif method == "infer":
                         result = await self.policy.infer(message["observation"])
+                    elif method == "get_base_rng_state":
+                        result = await self.policy.get_base_rng_state()
+                    elif method == "set_base_rng_state":
+                        result = await self.policy.set_base_rng_state(
+                            message["base_rng_state"]
+                        )
                     elif method == "update_actor_state":
                         result = await self.policy.update_actor_state(
                             message["actor_state"], message["actor_signature"]
@@ -313,7 +338,8 @@ def main(argv: list[str] | None = None) -> None:
     spec = RealRunSpec.read(args.run_spec)
     from midas.real.learner import create_learner
 
-    actor = create_learner(spec, seed=0)
+    policy_seed = int(spec.policy_seed if spec.policy_seed is not None else 0)
+    actor = create_learner(spec, seed=policy_seed)
     restored = False
     if args.residual_checkpoint:
         actor.restore_checkpoint(args.residual_checkpoint)
@@ -330,6 +356,7 @@ def main(argv: list[str] | None = None) -> None:
             config.get_config(spec.pi_config),
             spec.pi_checkpoint,
             default_prompt=args.default_prompt,
+            seed=policy_seed,
         )
     policy = RealPolicy(
         spec,

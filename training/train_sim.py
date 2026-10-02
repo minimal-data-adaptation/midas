@@ -30,6 +30,12 @@ from gym.spaces import Dict, Box
 from midas.data import ReplayBuffer
 from midas.utils.wandb_logger import WandBLogger, create_exp_name
 from midas.utils.resume import resolve_resume, sweep_orphan_deltas
+from midas.utils.reproducibility import (
+    EVAL_SEED_OFFSET,
+    decode_rng_state,
+    restore_training_rng_state,
+    seed_process,
+)
 import tempfile
 from functools import partial
 from training.train_utils_sim import (
@@ -142,7 +148,9 @@ class DummyEnvResidual(gym.ObservationWrapper):
 
 def main_residual(variant):
     """Main function for MIDAS training."""
-    
+
+    seed_process(variant.seed)
+
     devices = jax.local_devices()
     num_devices = len(devices)
     assert variant.batch_size % num_devices == 0
@@ -264,7 +272,16 @@ def main_residual(variant):
             224,
             variant.seed,
         )
-        eval_env = env
+        eval_env, _ = _get_libero_env(
+            task,
+            task_suite.get_task_bddl_file_path(task_id),
+            224,
+            variant.seed + EVAL_SEED_OFFSET,
+        )
+        # LIBERO uses process-global NumPy rather than an environment-local
+        # generator. Leave the process on the training stream after creating
+        # the independent evaluation simulator.
+        env.seed(variant.seed)
         variant.task_description = task_description
         variant.libero_task_name = task_suite.get_task_names()[task_id]
         variant.task_id = task_id
@@ -312,6 +329,12 @@ def main_residual(variant):
             f"robocasa/{robocasa_env_name}",
             **env_kwargs,
         )
+        eval_env_kwargs = dict(env_kwargs)
+        eval_env_kwargs["seed"] = variant.seed + EVAL_SEED_OFFSET
+        eval_env = gymnasium.make(
+            f"robocasa/{robocasa_env_name}",
+            **eval_env_kwargs,
+        )
         obs, info = env.reset()
 
         # Verify env accepted the scene restriction
@@ -333,35 +356,37 @@ def main_residual(variant):
                 )
         variant.task_description = obs["annotation.human.task_description"]
 
-        # Construct eval controller for controlled resets if eval_init_mode is configured.
-        # The same controller is used for BOTH the training env (online rollouts)
-        # and the eval env so they see identical reset distributions.
+        # Construct independent reset controllers for online and evaluation
+        # environments. They use distinct streams but the same reset distribution.
         eval_init_mode = getattr(pi_data_config, 'eval_init_mode', None)
+        eval_controller = None
         if eval_init_mode is not None:
             from training.robocasa_eval_reset import RoboCasaEvalResetController
             dataset_path = pathlib.Path(
                 getattr(pi_data_config, "eval_dataset_path", None)
                 or pi_data_config.data_dirs[0]["path"]
             )
-            eval_controller = RoboCasaEvalResetController(
-                dataset_path=dataset_path,
-                eval_init_mode=eval_init_mode,
-                layout_and_style_ids=pi_data_config.layout_and_style_ids,
-                eval_pool_episode_ids=getattr(pi_data_config, 'eval_pool_episode_ids', None),
-                eval_pool_fixture_refs=getattr(pi_data_config, 'eval_pool_fixture_refs', None),
-                eval_pool_object_categories=getattr(pi_data_config, 'eval_pool_object_categories', None),
-                keep_robot_pose=getattr(pi_data_config, 'eval_keep_robot_pose', False),
-                robot_pose_noise=getattr(pi_data_config, 'eval_robot_pose_noise', 0.0),
-                object_pose_noise=getattr(pi_data_config, 'eval_object_pose_noise', 0.0),
-                object_ori_noise=getattr(pi_data_config, 'eval_object_ori_noise', 0.0),
-                rng_seed=variant.seed,
+            def make_reset_controller(seed):
+                return RoboCasaEvalResetController(
+                    dataset_path=dataset_path,
+                    eval_init_mode=eval_init_mode,
+                    layout_and_style_ids=pi_data_config.layout_and_style_ids,
+                    eval_pool_episode_ids=getattr(pi_data_config, 'eval_pool_episode_ids', None),
+                    eval_pool_fixture_refs=getattr(pi_data_config, 'eval_pool_fixture_refs', None),
+                    eval_pool_object_categories=getattr(pi_data_config, 'eval_pool_object_categories', None),
+                    keep_robot_pose=getattr(pi_data_config, 'eval_keep_robot_pose', False),
+                    robot_pose_noise=getattr(pi_data_config, 'eval_robot_pose_noise', 0.0),
+                    object_pose_noise=getattr(pi_data_config, 'eval_object_pose_noise', 0.0),
+                    object_ori_noise=getattr(pi_data_config, 'eval_object_ori_noise', 0.0),
+                    rng_seed=seed,
+                )
+
+            eval_controller = make_reset_controller(variant.seed)
+            evaluation_reset_controller = make_reset_controller(
+                variant.seed + EVAL_SEED_OFFSET
             )
-            # Attach controller to the training env so online rollouts use
-            # the same controlled resets as eval
             env.unwrapped._eval_reset_controller = eval_controller
-            eval_env = env
-        else:
-            eval_env = env
+            eval_env.unwrapped._eval_reset_controller = evaluation_reset_controller
 
         task_horizon = get_task_horizon(robocasa_env_name)
         horizon = int(task_horizon * variant.robocasa_horizon_scale)
@@ -389,7 +414,7 @@ def main_residual(variant):
         env = CartPoleEnv(render_size=render_size, horizon=variant.get('cartpole_horizon', 100))
         env.seed(variant.seed)
         eval_env = CartPoleEnv(render_size=render_size, horizon=variant.get('cartpole_horizon', 100))
-        eval_env.seed(variant.seed + 100)
+        eval_env.seed(variant.seed + EVAL_SEED_OFFSET)
         variant.env_max_reward = 0  # best reward is 0 (theta=0)
         variant.max_timesteps = variant.get('cartpole_horizon', 100)
         variant.task_description = 'Balance the pole upright'
@@ -420,6 +445,8 @@ def main_residual(variant):
 
     # Create dummy env for observation/action space specs
     dummy_env = DummyEnvResidual(variant)
+    dummy_env.observation_space.seed(variant.seed)
+    dummy_env.action_space.seed(variant.seed + 1)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
     sample_action = add_batch_dim(dummy_env.action_space.sample())
     
@@ -449,7 +476,9 @@ def main_residual(variant):
         else:
             raise NotImplementedError()
         
-        agent_dp = policy_config.create_trained_policy(config, checkpoint_dir)
+        agent_dp = policy_config.create_trained_policy(
+            config, checkpoint_dir, seed=variant.seed
+        )
         print(f"Loaded frozen Pi-0.5 policy from {checkpoint_dir}")
 
     # Optionally load a separate Pi model for VLM prefix representations
@@ -467,7 +496,9 @@ def main_residual(variant):
             )
         vlm_params_path = vlm_config.weight_loader.params_path
         vlm_ckpt_dir = download.maybe_download(vlm_params_path.removesuffix("/params"))
-        agent_vlm = policy_config.create_trained_policy(vlm_config, vlm_ckpt_dir)
+        agent_vlm = policy_config.create_trained_policy(
+            vlm_config, vlm_ckpt_dir, seed=variant.seed + 2
+        )
         print(f"Loaded separate VLM prefix rep model from config '{vlm_base_config}'")
     else:
         agent_vlm = None
@@ -534,8 +565,9 @@ def main_residual(variant):
                 agent, eval_env, 1, variant, wandb_logger, agent_dp, agent_vlm=agent_vlm
             )
         finally:
-            if hasattr(eval_env, "close"):
-                eval_env.close()
+            for candidate in (eval_env, env):
+                if hasattr(candidate, "close"):
+                    candidate.close()
         return
 
     # If the agent is caching frozen-encoder features at rollout time, extend
@@ -712,6 +744,22 @@ def main_residual(variant):
                 print("WARNING: success buffer enabled but no success_replay_buffer.pkl in snapshot; "
                       "starting from empty success buffer.")
 
+        encoded_rng_state = resume_info['train_state'].get('reproducibility_state')
+        if encoded_rng_state:
+            restore_training_rng_state(
+                decode_rng_state(encoded_rng_state),
+                env=env,
+                base_policy=agent_dp,
+                replay_buffer=online_replay_buffer,
+                success_replay_buffer=success_replay_buffer,
+            )
+            print("Restored learner-adjacent RNG and environment state.")
+        else:
+            print(
+                "WARNING: legacy snapshot has no reproducibility state; "
+                "resume is compatible but cannot match an uninterrupted run exactly."
+            )
+
         start_step = resume_info['step']
         start_total_env_steps = int(resume_info['train_state'].get('total_env_steps', 0))
     else:
@@ -745,3 +793,6 @@ def main_residual(variant):
         # exited mid-save.
         if hasattr(agent, 'wait_for_checkpoints'):
             agent.wait_for_checkpoints()
+        for candidate in (eval_env, env):
+            if hasattr(candidate, "close"):
+                candidate.close()

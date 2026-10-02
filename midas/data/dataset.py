@@ -113,4 +113,14 @@ class Dataset(object):
         index = int(self.dataset_len * ratio)
         train_dataset_dict, test_dataset_dict = _split(self.dataset_dict,
                                                        index)
-        return Dataset(train_dataset_dict), Dataset(test_dataset_dict)
+        # Derive independent child streams from this dataset's seeded stream.
+        # Previously both child datasets were entropy-seeded, so sampling from
+        # a split was not reproducible even when the parent was seeded.
+        if hasattr(self.np_random, 'integers'):
+            seeds = self.np_random.integers(0, 2**32, size=2, dtype=np.uint32)
+        else:
+            seeds = self.np_random.randint(0, 2**32, size=2, dtype=np.uint32)
+        return (
+            Dataset(train_dataset_dict, seed=int(seeds[0])),
+            Dataset(test_dataset_dict, seed=int(seeds[1])),
+        )

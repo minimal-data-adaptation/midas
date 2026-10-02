@@ -6,6 +6,7 @@
 #SBATCH --mem=256G
 #SBATCH --time=48:00:00
 #SBATCH --partition=preempt
+#SBATCH --qos=preempt_qos
 #SBATCH --requeue
 #SBATCH --exclude=babel-w9-26,babel-n5-20
 #SBATCH --output=%x_%j.out
@@ -24,7 +25,7 @@ source "$REPO_DIR/scripts/experiment_env.sh"
 midas_require_storage_roots
 midas_activate_conda "${MIDAS_ROBOCASA_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-robocasa}"
 
-EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_rc_pnp_cab_er_l1s1_ep32_paper_v2_s0_a7_r1}"
+EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_rc_pnp_cab_er_l1s1_ep32_paper_v2_s0_a7_r1_seed_repro_test}"
 export MIDAS_EXP_DIR="${MIDAS_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/robocasa/pi05_base_v1}"
 
 cd "$REPO_DIR"
@@ -45,8 +46,7 @@ export PYTHONUNBUFFERED=1
 export PYTHONNOUSERSITE=1
 ROBOCASA_SOURCE_DIR="${ROBOCASA_SOURCE_DIR:-$REPO_DIR/robocasa}"
 export PYTHONPATH="$ROBOCASA_SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}"
-: "${WANDB_ENTITY:?Set WANDB_ENTITY before submitting this job}"
-export WANDB_ENTITY
+export WANDB_ENTITY="${MIDAS_WANDB_ENTITY:-skowshik-carnegie-mellon-university}"
 
 T_CONFIG=midas_pi05_robocasa_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32
 SOURCE_CONFIG=pi05_robocasa_single_task_lora_exact_replay_l1_s1_ep32

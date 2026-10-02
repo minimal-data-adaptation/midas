@@ -20,6 +20,18 @@ class FakeActor:
         self.state = state
 
 
+class StatefulBasePolicy(MockBasePolicy):
+    def __init__(self, spec, seed=0):
+        super().__init__(spec)
+        self.rng = np.random.default_rng(seed)
+
+    def get_rng_state(self):
+        return self.rng.bit_generator.state
+
+    def set_rng_state(self, state):
+        self.rng.bit_generator.state = state
+
+
 def _spec():
     return RealRunSpec(
         resize_image=4,
@@ -66,3 +78,16 @@ def test_protocol_rejects_out_of_range_normalized_actions():
     )
     with pytest.raises(ValueError, match="outside"):
         validate_inference_result(envelope, spec)
+
+
+def test_real_policy_round_trips_server_owned_base_rng():
+    spec = _spec()
+    base = StatefulBasePolicy(spec, seed=17)
+    policy = RealPolicy(spec, base, FakeActor())
+
+    saved = asyncio.run(policy.get_base_rng_state())["base_rng_state"]
+    expected = base.rng.normal(size=8)
+    base.rng = np.random.default_rng(999)
+    result = asyncio.run(policy.set_base_rng_state(saved))
+    assert result == {"base_rng_state_restored": True}
+    np.testing.assert_array_equal(base.rng.normal(size=8), expected)

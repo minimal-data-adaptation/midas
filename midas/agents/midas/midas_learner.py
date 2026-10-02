@@ -877,6 +877,7 @@ class MidasLearner(Agent):
     @property
     def _save_dict(self):
         return {
+            'rng': self._rng,
             'critic': self._critic,
             'target_critic_params': self._target_critic_params,
             'actor': self._actor,
@@ -903,6 +904,10 @@ class MidasLearner(Agent):
         self._actor = output_dict['actor']
         self._critic = output_dict['critic']
         self._target_critic_params = output_dict['target_critic_params']
+        # Older checkpoints do not contain ``rng``. Flax retains the target
+        # value in that case, preserving the historical seed-on-restore
+        # behavior while new checkpoints continue the exact PRNG stream.
+        self._rng = output_dict.get('rng', self._rng)
         if 'residual_alpha' in output_dict:
             self._residual_alpha = jnp.asarray(output_dict['residual_alpha'], dtype=jnp.float32)
         if 'algo' in output_dict:

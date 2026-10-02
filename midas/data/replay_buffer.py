@@ -10,6 +10,7 @@ import pickle
 import copy
 
 from midas.data.dataset import Dataset, DatasetDict
+from midas.utils.reproducibility import capture_numpy_rng, restore_numpy_rng
 import collections
 from flax.core import frozen_dict
 
@@ -113,7 +114,10 @@ class ReplayBuffer(Dataset):
                 mc[t] = running
 
     def get_random_trajs(self, num_trajs: int):
-        self.which_trajs = np.random.randint(0, self._traj_counter, num_trajs)
+        if hasattr(self.np_random, "integers"):
+            self.which_trajs = self.np_random.integers(0, self._traj_counter, num_trajs)
+        else:
+            self.which_trajs = self.np_random.randint(0, self._traj_counter, num_trajs)
         observations_list = []
         next_observations_list = []
         actions_list = []
@@ -225,9 +229,15 @@ class ReplayBuffer(Dataset):
         if indx is not None:
             indices = indx
         elif self.streaming_buffer_size:
-            indices = np.random.randint(0, self.streaming_buffer_size, batch_size)
+            if hasattr(self.np_random, "integers"):
+                indices = self.np_random.integers(0, self.streaming_buffer_size, batch_size)
+            else:
+                indices = self.np_random.randint(0, self.streaming_buffer_size, batch_size)
         else:
-            indices = np.random.randint(0, self.size, batch_size)
+            if hasattr(self.np_random, "integers"):
+                indices = self.np_random.integers(0, self.size, batch_size)
+            else:
+                indices = self.np_random.randint(0, self.size, batch_size)
         data_dict = {}
         for x in self.data:
             if isinstance(self.data[x], np.ndarray):
@@ -252,8 +262,18 @@ class ReplayBuffer(Dataset):
             FrozenDict batch sampled from the last trajectory.
         """
         assert self._last_traj_indices is not None, "No trajectory has been inserted yet"
-        indices = np.random.choice(self._last_traj_indices, size=batch_size, replace=True)
+        indices = self.np_random.choice(self._last_traj_indices, size=batch_size, replace=True)
         return self.sample(batch_size, indx=indices)
+
+    def get_rng_state(self):
+        """Return a portable snapshot of this buffer's private sampler RNG."""
+
+        return capture_numpy_rng(self.np_random)
+
+    def set_rng_state(self, state) -> None:
+        """Restore a state returned by :meth:`get_rng_state`."""
+
+        self._np_random = restore_numpy_rng(getattr(self, '_np_random', None), state)
 
     def get_last_traj_indices(self) -> Optional[np.ndarray]:
         """Return the indices of the most recently inserted trajectory."""
@@ -284,6 +304,7 @@ class ReplayBuffer(Dataset):
             _start=self._start,
             traj_bounds=self.traj_bounds,
             _last_traj_indices=self._last_traj_indices,
+            rng_state=self.get_rng_state(),
         )
         with open(filename, 'wb') as f:
             pickle.dump(save_dict, f, protocol=4)
@@ -298,6 +319,8 @@ class ReplayBuffer(Dataset):
         self._start = save_dict['_start']
         self.traj_bounds = save_dict['traj_bounds']
         self._last_traj_indices = save_dict.get('_last_traj_indices', None)
+        if 'rng_state' in save_dict:
+            self.set_rng_state(save_dict['rng_state'])
         # Backfill mc_returns for snapshots written before the field existed so
         # downstream samplers always find the key.
         if 'mc_returns' not in self.data:
