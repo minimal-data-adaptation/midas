@@ -9,11 +9,25 @@ dist/
 .venv/
 wandb/
 wandb_config.py
-experiments/
+# Keep experiment artifacts ignored, but include the reusable BC launchers.
+/experiments/*
+!/experiments/behavior_cloning/
+/experiments/behavior_cloning/*
+!/experiments/behavior_cloning/robocasa/
+/experiments/behavior_cloning/robocasa/*
+!/experiments/behavior_cloning/robocasa/*.sh
+!/experiments/behavior_cloning/robocasa/*.slurm
+!/experiments/evals/
+/experiments/evals/*
+!/experiments/evals/behavior_cloning/
+/experiments/evals/behavior_cloning/*
+!/experiments/evals/behavior_cloning/*.slurm
 checkpoints/
 buffers/
 videos/
 generated_suites/
+/design_docs/
 MUJOCO_LOG.TXT
 *.part
-
+*.err
+*.out
