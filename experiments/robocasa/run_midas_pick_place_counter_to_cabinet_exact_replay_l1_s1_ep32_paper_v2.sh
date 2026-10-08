@@ -15,7 +15,8 @@
 set -euo pipefail
 
 # RoboCasa MIDAS equivalent of the residual PA-RL paper-v2 cabinet job.
-# PickPlaceCounterToCabinet, layout 1, style 1, exact replay of episode 32.
+# PickPlaceCounterToCabinet, layout 1, style 1, exact replay of episode 32 with
+# 0.025 m object-position noise.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
@@ -51,7 +52,7 @@ export WANDB_ENTITY="${MIDAS_WANDB_ENTITY:-skowshik-carnegie-mellon-university}"
 T_CONFIG=midas_pi05_robocasa_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32
 SOURCE_CONFIG=pi05_robocasa_single_task_lora_exact_replay_l1_s1_ep32
 MIDAS_ROBOCASA_POLICY_ROOT="${MIDAS_ROBOCASA_POLICY_ROOT:-$MIDAS_DATA_ROOT/pi05_robocasa}"
-T_CKPT="${T_CKPT:-$MIDAS_ROBOCASA_POLICY_ROOT/${SOURCE_CONFIG}/${SOURCE_CONFIG}-v1/24000}"
+T_CKPT="${T_CKPT:-$MIDAS_ROBOCASA_POLICY_ROOT/${SOURCE_CONFIG}/${SOURCE_CONFIG}-v1/8000}"
 
 # Requeued jobs resume once a complete agent/replay snapshot exists.
 RESUME_ARGS=()
@@ -117,4 +118,5 @@ python -u -m training.launch_train_sim \
     --robocasa_horizon_scale 1.5 \
     --robocasa_horizon_cap 500 \
     --robocasa_use_right_view 1 \
+    --robocasa_eval_object_pose_noise 0.025 \
     "${RESUME_ARGS[@]}"

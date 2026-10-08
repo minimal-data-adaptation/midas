@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # Fifty-rollout, base-policy-only evaluation of the standalone RoboCasa
-# counter-to-cabinet BC checkpoint. Replay training episode 32, optionally with
+# counter-to-cabinet BC checkpoint. Replay training episode 32 with 0.025 m
 # object-position noise; every rollout is saved as an MP4 in a new job-specific
 # directory.
 
@@ -38,7 +38,7 @@ CHECKPOINT_STEP="${CHECKPOINT_STEP:-8000}"
 OPENPI_CHECKPOINT_ROOT="${OPENPI_CHECKPOINT_ROOT:-$MIDAS_DATA_ROOT/openpi_bc_checkpoints}"
 BC_RUN_NAME="${BC_RUN_NAME:-robocasa_bc_counter_to_cabinet_l1_s1_ep32_v1_s0_10691811}"
 BC_CHECKPOINT="${BC_CHECKPOINT:-$OPENPI_CHECKPOINT_ROOT/robocasa_bc/$CONFIG_NAME/$BC_RUN_NAME/$CHECKPOINT_STEP}"
-ROBOCASA_EVAL_OBJECT_POSE_NOISE="${ROBOCASA_EVAL_OBJECT_POSE_NOISE:-0.0}"
+readonly ROBOCASA_EVAL_OBJECT_POSE_NOISE=0.025
 
 for required_path in "$BC_CHECKPOINT/params" "$BC_CHECKPOINT/assets/$CONFIG_NAME/norm_stats.json"; do
     if [[ ! -e "$required_path" ]]; then
