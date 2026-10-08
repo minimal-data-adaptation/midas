@@ -1,9 +1,10 @@
-"""Evaluate a MIDAS checkpoint, with optional LIBERO perturbations.
+"""Evaluate a MIDAS or OpenPI BC checkpoint, with optional LIBERO perturbations.
 
 Model, environment, and checkpoint construction is delegated to the training
 launcher so evaluation cannot silently drift from the code that trained the
 checkpoint. This wrapper additionally supports on-demand generation of
 LIBERO BDDL perturbation suites.
+Use --eval_base_only=1 to evaluate only the policy in --pi_05_ckpt_dir.
 """
 
 from __future__ import annotations

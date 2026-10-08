@@ -150,16 +150,18 @@ def main_residual(variant):
     """Main function for MIDAS training."""
 
     seed_process(variant.seed)
+    eval_base_only = variant.get('eval_base_only', False)
 
     devices = jax.local_devices()
     num_devices = len(devices)
-    assert variant.batch_size % num_devices == 0
+    if not eval_base_only:
+        assert variant.batch_size % num_devices == 0
     print('num devices', num_devices)
-    print('batch size', variant.batch_size)
-    
-    # Shard leading dimension (batch dimension) across all devices evenly
-    sharding = jax.sharding.PositionalSharding(devices)
-    shard_fn = partial(shard_batch, sharding=sharding)
+    if not eval_base_only:
+        print('batch size', variant.batch_size)
+        # Shard training batches across all devices evenly.
+        sharding = jax.sharding.PositionalSharding(devices)
+        shard_fn = partial(shard_batch, sharding=sharding)
 
     kwargs = variant['train_kwargs']
     if kwargs.pop('cosine_decay', False):
@@ -360,12 +362,26 @@ def main_residual(variant):
         # environments. They use distinct streams but the same reset distribution.
         eval_init_mode = getattr(pi_data_config, 'eval_init_mode', None)
         eval_controller = None
+        variant.robocasa_eval_setup = {
+            'reset_mode': eval_init_mode or 'random',
+            'layout_and_style_ids': pi_data_config.layout_and_style_ids,
+        }
         if eval_init_mode is not None:
             from training.robocasa_eval_reset import RoboCasaEvalResetController
             dataset_path = pathlib.Path(
                 getattr(pi_data_config, "eval_dataset_path", None)
                 or pi_data_config.data_dirs[0]["path"]
             )
+            robot_pose_noise = getattr(variant, "robocasa_eval_robot_pose_noise", None)
+            if robot_pose_noise is None:
+                robot_pose_noise = getattr(pi_data_config, "eval_robot_pose_noise", 0.0)
+            object_pose_noise = getattr(variant, "robocasa_eval_object_pose_noise", None)
+            if object_pose_noise is None:
+                object_pose_noise = getattr(pi_data_config, "eval_object_pose_noise", 0.0)
+            object_ori_noise = getattr(variant, "robocasa_eval_object_ori_noise", None)
+            if object_ori_noise is None:
+                object_ori_noise = getattr(pi_data_config, "eval_object_ori_noise", 0.0)
+
             def make_reset_controller(seed):
                 return RoboCasaEvalResetController(
                     dataset_path=dataset_path,
@@ -375,9 +391,9 @@ def main_residual(variant):
                     eval_pool_fixture_refs=getattr(pi_data_config, 'eval_pool_fixture_refs', None),
                     eval_pool_object_categories=getattr(pi_data_config, 'eval_pool_object_categories', None),
                     keep_robot_pose=getattr(pi_data_config, 'eval_keep_robot_pose', False),
-                    robot_pose_noise=getattr(pi_data_config, 'eval_robot_pose_noise', 0.0),
-                    object_pose_noise=getattr(pi_data_config, 'eval_object_pose_noise', 0.0),
-                    object_ori_noise=getattr(pi_data_config, 'eval_object_ori_noise', 0.0),
+                    robot_pose_noise=robot_pose_noise,
+                    object_pose_noise=object_pose_noise,
+                    object_ori_noise=object_ori_noise,
                     rng_seed=seed,
                 )
 
@@ -387,6 +403,14 @@ def main_residual(variant):
             )
             env.unwrapped._eval_reset_controller = eval_controller
             eval_env.unwrapped._eval_reset_controller = evaluation_reset_controller
+            variant.robocasa_eval_setup.update(
+                dataset_path=str(dataset_path),
+                episode_ids=evaluation_reset_controller._pool_ids,
+                keep_robot_pose=evaluation_reset_controller._keep_robot_pose,
+                robot_pose_noise=evaluation_reset_controller._robot_pose_noise,
+                object_pose_noise=evaluation_reset_controller._object_pose_noise,
+                object_ori_noise=evaluation_reset_controller._object_ori_noise,
+            )
 
         task_horizon = get_task_horizon(robocasa_env_name)
         horizon = int(task_horizon * variant.robocasa_horizon_scale)
@@ -443,15 +467,26 @@ def main_residual(variant):
         run_id=saved_run_id,
     )
 
-    # Create dummy env for observation/action space specs
-    dummy_env = DummyEnvResidual(variant)
-    dummy_env.observation_space.seed(variant.seed)
-    dummy_env.action_space.seed(variant.seed + 1)
-    sample_obs = add_batch_dim(dummy_env.observation_space.sample())
-    sample_action = add_batch_dim(dummy_env.action_space.sample())
-    
-    print('MIDAS sample obs shapes:', [(k, v.shape) for k, v in sample_obs.items()])
-    print('MIDAS sample action shape:', sample_action.shape)
+    if eval_base_only:
+        env_action_dim = {'libero': 7, 'robocasa': 12, 'cartpole': 1}[variant.env]
+        requested_action_dim = variant.get('action_dim', -1)
+        variant.action_dim = requested_action_dim if requested_action_dim > 0 else env_action_dim
+        if variant.action_dim > env_action_dim:
+            raise ValueError(
+                f"--action_dim ({variant.action_dim}) cannot exceed the {variant.env} "
+                f"environment action dimension ({env_action_dim})"
+            )
+        variant.env_action_dim = env_action_dim
+    else:
+        # Create dummy env for MIDAS observation/action space specs.
+        dummy_env = DummyEnvResidual(variant)
+        dummy_env.observation_space.seed(variant.seed)
+        dummy_env.action_space.seed(variant.seed + 1)
+        sample_obs = add_batch_dim(dummy_env.observation_space.sample())
+        sample_action = add_batch_dim(dummy_env.action_space.sample())
+
+        print('MIDAS sample obs shapes:', [(k, v.shape) for k, v in sample_obs.items()])
+        print('MIDAS sample action shape:', sample_action.shape)
     
     # Load frozen base policy (Pi-0.5 or zero policy for test envs)
     if variant.env == 'cartpole':
@@ -480,6 +515,19 @@ def main_residual(variant):
             config, checkpoint_dir, seed=variant.seed
         )
         print(f"Loaded frozen Pi-0.5 policy from {checkpoint_dir}")
+
+    if eval_base_only:
+        from training.train_utils_sim import perform_control_eval_residual
+
+        print(f"[Eval] base policy only: {variant.pi_05_ckpt_dir or 'ZeroBasePolicy'}")
+        try:
+            return perform_control_eval_residual(
+                None, eval_env, 1, variant, wandb_logger, agent_dp
+            )
+        finally:
+            for candidate in (eval_env, env):
+                if hasattr(candidate, 'close'):
+                    candidate.close()
 
     # Optionally load a separate Pi model for VLM prefix representations
     vlm_base_config = variant.get('vlm_base_config', None)

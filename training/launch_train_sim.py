@@ -20,6 +20,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wandb", default=0, type=int, help="Enable Weights & Biases logging")
     parser.add_argument("--eval_only", default=0, type=int)
     parser.add_argument(
+        "--eval_base_only",
+        default=0,
+        type=int,
+        choices=[0, 1],
+        help=(
+            "Evaluate only the frozen OpenPI/BC policy from --pi_05_ckpt_dir. "
+            "Implies --eval_only=1 and skips MIDAS construction and restoration."
+        ),
+    )
+    parser.add_argument(
         "--eval_episodes",
         "--num_evals",
         dest="eval_episodes",
@@ -153,6 +163,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--robocasa_horizon_scale", default=1.5, type=float)
     parser.add_argument("--robocasa_horizon_cap", default=0, type=int)
     parser.add_argument("--robocasa_use_right_view", default=0, type=int)
+    parser.add_argument(
+        "--robocasa_eval_robot_pose_noise",
+        default=None,
+        type=float,
+        help="Override the OpenPI config's RoboCasa evaluation robot-pose noise.",
+    )
+    parser.add_argument(
+        "--robocasa_eval_object_pose_noise",
+        default=None,
+        type=float,
+        help="Override the OpenPI config's RoboCasa evaluation object XY noise (metres).",
+    )
+    parser.add_argument(
+        "--robocasa_eval_object_ori_noise",
+        default=None,
+        type=float,
+        help="Override the OpenPI config's RoboCasa evaluation object yaw noise (radians).",
+    )
     parser.add_argument("--cartpole_horizon", default=100, type=int)
 
     parser.add_argument("--actor_arch", default="tanh_gaussian", choices=["tanh_gaussian", "mip"])
@@ -210,6 +238,7 @@ def parse_args(argv: list[str] | None = None):
         "freeze_vision_encoder",
         "wandb",
         "eval_only",
+        "eval_base_only",
         "save_eval_videos",
         "round_robin_init_states",
         "mip_use_film",
@@ -218,6 +247,15 @@ def parse_args(argv: list[str] | None = None):
         variant[key] = bool(variant[key])
     if variant.demo_bc_warmup_utd <= 0:
         variant.demo_bc_warmup_utd = variant.multi_grad_step
+    if variant.eval_base_only:
+        variant.eval_only = True
+        if variant.restore_checkpoint_path or variant.resume_dir:
+            parser.error(
+                "--eval_base_only cannot be combined with --restore_checkpoint_path/"
+                "--checkpoint_dir or --resume_dir; use --pi_05_ckpt_dir for the BC checkpoint"
+            )
+        if not 0 < variant.query_freq <= variant.chunk_len:
+            parser.error("--eval_base_only requires 0 < --query_freq <= --chunk_len")
     if variant.resume_dir and variant.restore_checkpoint_path:
         parser.error("--resume_dir and --restore_checkpoint_path are mutually exclusive")
     if variant.env != "cartpole" and not variant.pi_05_config:
@@ -226,7 +264,7 @@ def parse_args(argv: list[str] | None = None):
         parser.error("--pi_05_ckpt_dir is required for LIBERO and RoboCasa")
     if variant.env == "robocasa" and not variant.robocasa_env_name:
         parser.error("--robocasa_env_name is required for RoboCasa")
-    if variant.eval_only and not variant.restore_checkpoint_path:
+    if variant.eval_only and not variant.eval_base_only and not variant.restore_checkpoint_path:
         parser.error("--restore_checkpoint_path is required with --eval_only")
     if variant.eval_episodes <= 0:
         parser.error("--eval_episodes/--num_evals must be greater than zero")
@@ -234,8 +272,17 @@ def parse_args(argv: list[str] | None = None):
         parser.error("--pos_perturb_radius cannot be negative")
     if variant.pos_perturb_radius and variant.env != "libero":
         parser.error("--pos_perturb_radius is supported only for LIBERO")
+    for noise_name in (
+        "robocasa_eval_robot_pose_noise",
+        "robocasa_eval_object_pose_noise",
+        "robocasa_eval_object_ori_noise",
+    ):
+        noise_value = getattr(variant, noise_name)
+        if noise_value is not None and noise_value < 0:
+            parser.error(f"--{noise_name} cannot be negative")
     if (
-        variant.midas_use_trust_region
+        not variant.eval_base_only
+        and variant.midas_use_trust_region
         and variant.midas_a_star_delta_clip_norm is None
     ):
         parser.error(

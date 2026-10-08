@@ -16,6 +16,40 @@ def test_eval_only_requires_checkpoint():
         parse_args(["--env", "cartpole", "--eval_only", "1"])
 
 
+def test_base_only_eval_accepts_bc_checkpoint_and_implies_eval_only():
+    variant = parse_args(
+        [
+            "--env", "robocasa",
+            "--robocasa_env_name", "PickPlaceCounterToCabinet",
+            "--pi_05_config", "pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32",
+            "--pi_05_ckpt_dir", "/tmp/bc/8000",
+            "--eval_base_only", "1",
+        ]
+    )
+    assert variant.eval_base_only is True
+    assert variant.eval_only is True
+    assert variant.restore_checkpoint_path is None
+
+
+@pytest.mark.parametrize("restore_flag", ["--checkpoint_dir", "--resume_dir"])
+def test_base_only_eval_rejects_midas_restore_and_resume(restore_flag):
+    with pytest.raises(SystemExit):
+        parse_args([
+            "--env", "cartpole", "--eval_base_only", "1",
+            restore_flag, "/tmp/midas",
+        ])
+
+
+@pytest.mark.parametrize("query_freq,chunk_len", [(0, 10), (11, 10), (2, 3)])
+def test_base_only_eval_rejects_invalid_chunk_execution(query_freq, chunk_len):
+    with pytest.raises(SystemExit):
+        parse_args([
+            "--env", "cartpole", "--eval_base_only", "1",
+            "--query_freq", str(query_freq), "--chunk_len", str(chunk_len),
+            "--requery_base_policy", "0",
+        ])
+
+
 def test_evaluation_aliases_and_artifact_flags():
     variant = parse_args(
         [
@@ -75,6 +109,28 @@ def test_robocasa_right_view_flag_is_boolean():
         ]
     )
     assert variant.robocasa_use_right_view is True
+
+
+def test_robocasa_eval_noise_overrides_are_optional_and_validated():
+    common = [
+        "--env", "robocasa",
+        "--robocasa_env_name", "PickPlaceCounterToCabinet",
+        "--pi_05_config", "bc-config",
+        "--pi_05_ckpt_dir", "/tmp/bc/8000",
+        "--eval_base_only", "1",
+    ]
+    defaults = parse_args(common)
+    assert defaults.robocasa_eval_robot_pose_noise is None
+    assert defaults.robocasa_eval_object_pose_noise is None
+    assert defaults.robocasa_eval_object_ori_noise is None
+
+    overridden = parse_args(
+        common + ["--robocasa_eval_object_pose_noise", "0.025"]
+    )
+    assert overridden.robocasa_eval_object_pose_noise == pytest.approx(0.025)
+
+    with pytest.raises(SystemExit):
+        parse_args(common + ["--robocasa_eval_object_pose_noise", "-0.01"])
 
 
 def test_action_dim_is_optional_and_can_be_overridden():

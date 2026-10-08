@@ -162,6 +162,143 @@ CPU CI setup, lock regeneration, and troubleshooting.
 
 ## Running
 
+### RoboCasa OpenPI behavior cloning
+
+Use the `midas-robocasa` environment and the bundled `openpi/` fork to fine-tune
+Pi-0.5 on demonstrations before running MIDAS. No simulator or kitchen assets
+are needed for BC: the loader reads the converted LeRobot-v2 Parquet/MP4 data
+and `meta/{info,modality,tasks,episodes}.json*` plus episode metadata in `extras/`.
+Polars reads Parquet, and OpenCV decodes the camera videos; this path does not
+require installing LeRobot separately.
+
+Set these paths in your experiment environment file. Use new writable asset and
+checkpoint roots; the BC entries have separate names and asset IDs from the
+legacy policies used by MIDAS.
+
+```bash
+conda activate midas-robocasa
+export MIDAS_REPO_DIR="<absolute-path-to-this-midas-checkout>"
+export OPENPI_DATASET_ROOT="<absolute-path-to-robocasa-assets>"
+export OPENPI_ASSETS_ROOT="<absolute-path-to-new-bc-assets>"
+export OPENPI_CHECKPOINT_ROOT="<absolute-path-to-new-bc-checkpoints>"
+# Optional: reuse downloaded Pi-0.5 base parameters. Otherwise they are fetched
+# from gs://openpi-assets/checkpoints/pi05_base/params into OPENPI_DATA_HOME.
+export OPENPI_PI05_BASE_PARAMS="<absolute-path-to-pi05-base/params>"
+export PYTHONPATH="$MIDAS_REPO_DIR/openpi/src:$MIDAS_REPO_DIR/openpi/packages/openpi-client/src${PYTHONPATH:+:$PYTHONPATH}"
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+cd "$MIDAS_REPO_DIR/openpi"
+```
+
+The three BC configs are independent, explicit `TrainConfig` entries, not aliases
+or copies of legacy configs. They define the model, training hyperparameters,
+dataset paths, scene filters, and separate asset IDs directly while retaining
+the training settings of the previously used task policies, except that all
+three BC entries explicitly set `discrete_state_input=False`. `num_demos=1`
+selects the first matching episode in ascending episode-ID order; cabinet
+additionally requires episode 32.
+
+| Task | BC config | Dataset relative to `OPENPI_DATASET_ROOT` |
+| --- | --- | --- |
+| Counter to cabinet | `pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32` | `robocasa/v1.0/target/atomic/PickPlaceCounterToCabinet/20250811/lerobot` |
+| Fridge drawer to shelf | `pi05_robocasa_bc_fridge_drawer_to_shelf_l50_s37` | `robocasa/v1.0/pretrain/atomic/PickPlaceFridgeDrawerToShelf/20250821/lerobot` |
+| Prepare coffee | `pi05_robocasa_bc_prepare_coffee_l25_s29` | `robocasa/v1.0/pretrain/composite/PrepareCoffee/20250716/lerobot` |
+
+Compute normalization statistics for each config, then inspect the complete
+input path. CPU mode prevents these checks from reserving GPU memory.
+
+```bash
+CONFIGS=(
+  pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32
+  pi05_robocasa_bc_fridge_drawer_to_shelf_l50_s37
+  pi05_robocasa_bc_prepare_coffee_l25_s29
+)
+for CONFIG in "${CONFIGS[@]}"; do
+  JAX_PLATFORMS=cpu python scripts/compute_norm_stats.py --config-name "$CONFIG"
+  JAX_PLATFORMS=cpu python scripts/trace_robocasa_bc.py --config-name "$CONFIG"
+done
+```
+
+The trace prints selected episode IDs, recorded instructions, asset locations,
+and model-input shapes. It verifies prompt collation and episode-safe action
+chunks. In the datasets used here, the filters select cabinet episode 32
+(hot dog), fridge episode 40 (banana), and coffee episode 4 (mug).
+
+To test one optimizer update and checkpoint save for each task on the preempt
+partition, after computing the statistics:
+
+```bash
+export OPENPI_PYTHON_BIN="$(command -v python)"
+cd "$MIDAS_REPO_DIR"
+sbatch --export=ALL openpi/scripts/robocasa_bc_smoke.slurm
+```
+
+The smoke job uses batch size 1, zero loader workers, a unique run name, and
+disabled W&B logging. It prints `BC_TRAINING_PASSED` after each completed task.
+Its output is under
+`OPENPI_CHECKPOINT_ROOT/robocasa_bc/<config>/bc_smoke_<job-id>/`.
+
+For a full BC run, choose any config from the table and a new experiment name:
+
+```bash
+cd "$MIDAS_REPO_DIR/openpi"
+python scripts/train.py pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32 \
+  --exp-name cabinet_bc_v1 \
+  --batch-size 64 --num-workers 4 --num-train-steps 100000 \
+  --seed 0 --no-wandb-enabled
+```
+
+Replace the config and experiment name for fridge or coffee. Batch size 64 may
+require a larger GPU or multiple devices; reduce it to fit the available memory.
+For W&B logging, omit `--no-wandb-enabled` and set `WANDB_ENTITY` in the shell.
+Use `--resume` only with a previously created run; an existing output directory
+is otherwise rejected. Checkpoints contain both `params/` and the config's
+normalization assets.
+
+Full-training preempt launchers for these same three tasks are in
+`experiments/behavior_cloning/robocasa/`. Load the experiment environment and
+BC paths above, then submit from the repository root:
+
+```bash
+cd "$MIDAS_REPO_DIR"
+sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.slurm
+sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.slurm
+sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_prepare_coffee_l25_s29.slurm
+```
+
+The launchers compute missing normalization statistics, run the input trace,
+then train with the config defaults (seed 0, batch size 64, 100,000 steps,
+four workers, checkpoints every 4,000 steps). Supply `OPENPI_PYTHON_BIN` to use
+an absolute Python executable, or the runner activates `MIDAS_ROBOCASA_CONDA_ENV`.
+If the explicit BC paths are omitted, they default to `robocasa_assets/`,
+`openpi_bc_assets/`, and `openpi_bc_checkpoints/` beneath `MIDAS_DATA_ROOT`.
+
+Each submission has a task-specific experiment name containing its job ID.
+Checkpoints go to
+`OPENPI_CHECKPOINT_ROOT/robocasa_bc/<config>/<experiment>/`; Slurm requeues
+reuse that name and resume without overwriting saved checkpoints. To manually
+resume, set `OPENPI_BC_EXP_NAME` to the original experiment name before submitting.
+W&B uses `WANDB_ENTITY` and project `robocasa-openpi-bc`; set
+`OPENPI_BC_WANDB_ENABLED=0` to disable it. Optional overrides are
+`OPENPI_BC_SEED`, `OPENPI_BC_BATCH_SIZE`, `OPENPI_BC_NUM_TRAIN_STEPS`,
+`OPENPI_BC_NUM_WORKERS`, and `OPENPI_BC_SAVE_INTERVAL`. In particular, lower the
+batch size when using a GPU that cannot fit the default batch of 64.
+
+The OpenPI code path is:
+
+| Stage | Code and behavior |
+| --- | --- |
+| Config | `openpi/training/config.py`: resolve the BC entry; its RoboCasa factory sets task-derived prompts, raw `action` sequences, and dataset-only repacking. |
+| Dataset | `openpi/training/data_loader.py` dispatches local roots to `robocasa_dataset.py`: filter demos, resolve each root's own task mapping, decode three cameras, and clamp action chunks within the episode. |
+| Schema | `RobocasaRepack` reorders Groot state/actions using `modality.json`; `RobocasaInputs` constructs images, masks, and padded model state/action targets. |
+| Normalization and language | `transform_dataset()` normalizes state/actions; `ModelTransformFactory` resizes images and tokenizes the recorded prompt. All three BC entries set `discrete_state_input=False`, so state is not appended to the language prompt. |
+| Batch | `TorchDataLoader` stacks scalar-prompt tokens into `(B, 200)`, state into `(B, 32)`, and actions into `(B, 10, 32)` for both training frameworks. |
+| Training | `scripts/train.py` restores base weights, creates optimizer state, and runs Pi-0.5 flow-matching loss in `models/pi0.py`; image/language tokens form the prefix and noisy actions form the suffix. |
+| Save/inference | `training/checkpoints.py` saves parameters and assets; `policies/policy_config.py` restores them. Policy inference uses the supplied natural-language `prompt` and adds exactly one model batch dimension. |
+
+The OpenPI BC path and simulator replay now preserve the recorded episode
+instruction. MIDAS's separate demonstration-buffer prompt overrides still need
+their runtime changes before using these policies for corrected online training.
+
 The launcher accepts only `--algo midas`. A LIBERO run looks like:
 
 ```bash
@@ -207,6 +344,42 @@ python -m training.evaluation.evaluate_sim \
   --residual_alpha 0.5 --predict_a_exec 1 \
   --use_vlm_embedding 1
 ```
+
+To evaluate an OpenPI behavior-cloning checkpoint on its own, add
+`--eval_base_only 1` and supply the BC configuration and checkpoint using
+`--pi_05_config` and `--pi_05_ckpt_dir`. This implies evaluation mode, skips the
+MIDAS learner, and executes the base policy's action chunks. For the RoboCasa
+counter-to-cabinet BC configuration:
+
+```bash
+python -m training.evaluation.evaluate_sim \
+  --eval_base_only 1 \
+  --env robocasa \
+  --robocasa_env_name PickPlaceCounterToCabinet \
+  --pi_05_config pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32 \
+  --pi_05_ckpt_dir <bc-run-directory>/<saved-step> \
+  --output_dir <evaluation-output-directory> \
+  --num_evals 50 --seed 0 \
+  --query_freq 10 --chunk_len 10 \
+  --robocasa_use_right_view 1 \
+  --robocasa_horizon_scale 1.5 --robocasa_horizon_cap 500
+```
+
+Pass the numeric saved-step directory containing `params/` and `assets/`, such
+as `<bc-run-directory>/8000`, rather than the run parent or `params/` itself.
+Base-only evaluation rejects `--checkpoint_dir`, `--restore_checkpoint_path`,
+and `--resume_dir`. Residual actor and VLM-feature flags do not affect these
+rollouts. By default it executes all 12 RoboCasa policy action dimensions;
+`--action_dim 7` explicitly limits execution to the first seven and zero-pads
+the rest. The model receives each episode's live RoboCasa language annotation.
+Reset restrictions come from the selected OpenPI configuration. The three
+standalone RoboCasa BC configs replay their training demonstrations exactly:
+cabinet episode 32, fridge episode 40, and coffee episode 4. Replay restores
+the recorded objects, fixtures, cameras, robot pose, and initial MuJoCo state
+with zero perturbation, and keeps the recorded instruction for every step.
+These rollouts measure performance on the training initialization; generalization
+requires a separately configured reset distribution. Videos, `summary.csv`,
+and `summary.json` identify the checkpoint, replay setup, episode IDs, and prompts.
 
 For object, language, spatial-swap, environment, or task perturbations, either
 pass a previously generated `--suite_manifest`, or generate it in the evaluator

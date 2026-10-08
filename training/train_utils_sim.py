@@ -188,6 +188,9 @@ def obs_to_pi_zero_input(obs, variant):
     elif variant.env == 'robocasa':
         img = np.ascontiguousarray(obs["video.robot0_agentview_left"])
         wrist_img = np.ascontiguousarray(obs["video.robot0_eye_in_hand"])
+        prompt = obs.get("annotation.human.task_description")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("RoboCasa observation requires a nonempty natural-language task description")
         img = image_tools.convert_to_uint8(
             image_tools.resize_with_pad(img, 224, 224)
         )
@@ -205,7 +208,7 @@ def obs_to_pi_zero_input(obs, variant):
             "observation/image": img,
             "observation/wrist_image": wrist_img,
             "observation/state": state,
-            "prompt": str(variant.task_description),
+            "prompt": prompt,
         }
         if variant.get("robocasa_use_right_view", False):
             right_img = np.ascontiguousarray(obs["video.robot0_agentview_right"])
@@ -994,28 +997,30 @@ def perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp
 
 
 def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_dp=None, agent_vlm=None):
-    """Evaluate MIDAS policy.
+    """Evaluate MIDAS or, with eval_base_only, the frozen base policy alone.
     
     Uses the same logic as collect_traj_residual but without exploration noise.
     When requery_base_policy=False, the base policy is queried every chunk_len
     steps and the cached chunk is sliced for each query_freq window.
     """
+    eval_base_only = variant.get('eval_base_only', False)
     query_frequency = variant.query_freq
     env_action_dim = variant.get('env_action_dim', variant.action_dim)
     print(f'[Eval] query frequency: {query_frequency}')
     max_timesteps = variant.max_timesteps
     env_max_reward = variant.env_max_reward
-    residual_alpha =  float(agent._residual_alpha)
+    residual_alpha = 0.0 if eval_base_only else float(agent._residual_alpha)
     chunk_len = variant.chunk_len
     predict_a_exec = variant.get('predict_a_exec', False)
-    use_vlm_embedding = variant.get('use_vlm_embedding', False)
+    use_vlm_embedding = not eval_base_only and variant.get('use_vlm_embedding', False)
     cache_pixel_features = (
-        variant.get('freeze_vision_encoder', False) and not use_vlm_embedding
+        not eval_base_only
+        and variant.get('freeze_vision_encoder', False) and not use_vlm_embedding
     )
     requery_base_policy = variant.get('requery_base_policy', True)
     actor_pop_base_actions = variant.get('actor_pop_base_actions', False)
     critic_pop_base_actions = variant.get('critic_pop_base_actions', True)
-    skip_infer = actor_pop_base_actions and critic_pop_base_actions
+    skip_infer = not eval_base_only and actor_pop_base_actions and critic_pop_base_actions
 
     output_dir = Path(variant.output_dir).expanduser() if variant.get('output_dir') else None
     videos_dir = output_dir / 'videos' if output_dir is not None else None
@@ -1085,8 +1090,9 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                     settle_secs=variant.get('pos_perturb_settle_secs', 5.0),
                 )
         elif variant.env == 'robocasa':
-            obs, _ = env.reset()
-            init_index = None
+            obs, reset_info = env.reset()
+            variant.task_description = obs['annotation.human.task_description']
+            init_index = reset_info.get('episode_id')
         elif variant.env == 'cartpole':
             obs = env.reset()
             init_index = None
@@ -1116,7 +1122,8 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
             if need_base_query:
                 assert agent_dp is not None
                 vlm_source = agent_vlm or agent_dp
-                qpos = obs_to_qpos(obs, variant)
+                if not eval_base_only:
+                    qpos = obs_to_qpos(obs, variant)
                 obs_pi_zero = obs_to_pi_zero_input(obs, variant)
                 if skip_infer and i != 0:
                     # After initial eval: only need VLM embedding, no base actions
@@ -1133,6 +1140,15 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                     cached_base_actions = infer_result["actions"][
                         :chunk_len, :variant.action_dim
                     ]
+                    if eval_base_only:
+                        expected_shape = (chunk_len, variant.action_dim)
+                        if cached_base_actions.shape != expected_shape:
+                            raise ValueError(
+                                f"Base policy returned action chunk {cached_base_actions.shape}; "
+                                f"expected at least {expected_shape}. Check --chunk_len and --action_dim."
+                            )
+                        if not np.all(np.isfinite(cached_base_actions)):
+                            raise ValueError('Base policy returned NaN/Inf actions')
                     if use_vlm_embedding:
                         if agent_vlm is not None:
                             vlm_hs = vlm_source.get_prefix_rep(obs_pi_zero)
@@ -1149,7 +1165,7 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
             if t % query_frequency == 0:
                 assert cached_base_actions is not None
                 # Need qpos for obs_dict even if base wasn't re-queried this step
-                if not need_base_query:
+                if not eval_base_only and not need_base_query:
                     qpos = obs_to_qpos(obs, variant)
                 
                 # Determine which slice of the cached chunk to use
@@ -1182,13 +1198,13 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                     }
                     if variant.add_states:
                         obs_dict['state'] = qpos[np.newaxis, ..., np.newaxis]
-                elif variant.add_states:
+                elif not eval_base_only and variant.add_states:
                     obs_dict = {
                         'pixels': curr_image[np.newaxis, ..., np.newaxis],
                         'state': qpos[np.newaxis, ..., np.newaxis],
                         'base_action': base_actions[np.newaxis, ..., np.newaxis],
                     }
-                else:
+                elif not eval_base_only:
                     obs_dict = {
                         'pixels': curr_image[np.newaxis, ..., np.newaxis],
                         'base_action': base_actions[np.newaxis, ..., np.newaxis],
@@ -1201,8 +1217,8 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                     feat = agent.compute_pixel_features(obs_dict['pixels'])
                     obs_dict['pixel_features'] = np.asarray(feat)[..., np.newaxis]
 
-                if i == 0:
-                    # Initial evaluation: zero residual to test base policy
+                if eval_base_only or i == 0:
+                    # Base-only or initial evaluation executes the base chunk.
                     delta_actions = np.zeros((query_frequency, variant.action_dim))
                     actions = np.clip(base_actions_slice, -1.0, 1.0)
                 else:
@@ -1279,6 +1295,11 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
             'base_norm_mean': float(np.mean(rollout_base_norms)),
             'clipping_rate_mean': float(np.mean(rollout_clipping_rates)),
         })
+        if variant.env == 'robocasa':
+            episode_rows[-1].update(
+                task_description=variant.task_description,
+                reset_mode=reset_info.get('reset_mode', 'random'),
+            )
                 
         print(f'Rollout {rollout_id}: {episode_return=}, Success: {is_success}')
         video = np.stack(image_list).transpose(0, 3, 1, 2)
@@ -1350,7 +1371,14 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                 'clipping_rate_mean': float(np.mean(all_clipping_rates)),
             })
         metadata = {
-            'checkpoint': str(variant.restore_checkpoint_path),
+            'checkpoint': str(
+                variant.pi_05_ckpt_dir if eval_base_only else variant.restore_checkpoint_path
+            ),
+            'eval_base_only': bool(eval_base_only),
+            'pi_05_config': variant.get('pi_05_config'),
+            'pi_05_ckpt_dir': variant.get('pi_05_ckpt_dir'),
+            'env': variant.env,
+            'robocasa_env_name': variant.get('robocasa_env_name_resolved'),
             'suite': variant.get('task_suite_name_resolved', variant.get('task_suite_name')),
             'task_id': variant.get('task_id'),
             'task_name': variant.get('libero_task_name'),
@@ -1365,6 +1393,8 @@ def _perform_control_eval_residual(agent, env, i, variant, wandb_logger, agent_d
                 'objects': perturb_objects or [],
             },
         }
+        if variant.env == 'robocasa':
+            metadata['robocasa_eval_setup'] = variant.get('robocasa_eval_setup')
         with (output_dir / 'summary.json').open('w', encoding='utf-8') as handle:
             json.dump(metadata, handle, indent=2)
             handle.write('\n')
