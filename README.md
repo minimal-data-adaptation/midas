@@ -1,14 +1,7 @@
 # MIDAS
 
-MIDAS is residual policy-agnostic reinforcement learning for adapting a frozen
-vision-language-action policy. The frozen Pi-0.5 policy proposes action chunks;
-MIDAS learns bounded residual actions from online interaction. This release
-supports LIBERO and RoboCasa simulation plus a separately isolated YAM
-bimanual real-world workflow.
-
-Other RL algorithms, plotting utilities, and research-era checkpoints are
-intentionally out of scope. Checkpoints created by the pre-release research
-package are not compatible with the renamed MIDAS state.
+Code for the paper: "What Does It Take For A Generalist Robot Policy
+To Adapt Using Minimal Data?" (https://arxiv.org/pdf/2608.11363)
 
 ## Environment setup
 
@@ -50,17 +43,6 @@ bash scripts/install_profile.sh robocasa
 python robocasa/robocasa/scripts/download_kitchen_assets.py --type all
 python -m pip check  # see the documented fork-metadata exceptions below
 bash scripts/smoke_cpu.sh
-```
-
-YAM real-world training (the robot driver is supplied separately):
-
-```bash
-conda env create -f environment-real.yml
-conda activate midas-real
-bash scripts/install_profile.sh real
-# Install the site-specific yam_teleop package into this environment.
-python -m pip check  # the unrelated gym-aloha metadata exception is documented below
-PYTHON_BIN=python bash scripts/real/yam/smoke_mock.sh
 ```
 
 For an NVIDIA GPU, install the CUDA JAX overlay after the profile lock:
@@ -449,10 +431,3 @@ profiles, launch ordering, resume, and evaluation are in
 [docs/REAL_WORLD.md](docs/REAL_WORLD.md). Public artifact records and hashes live in
 `midas/artifacts_index.json`; no trained artifacts are bundled in v0.1.0.
 
-## License and attribution
-
-Owned code is released under the [MIT License](LICENSE). The code has lineage
-from JAXRL2/PTR and uses separately licensed submodules; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Release publication remains
-subject to the rights-holder and dataset sign-offs described in
-[docs/RELEASING.md](docs/RELEASING.md).
