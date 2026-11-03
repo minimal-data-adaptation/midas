@@ -1,0 +1,12 @@
+[submodule "openpi"]
+	path = openpi
+	url = https://github.com/shreyas-kowshik/openpi.git
+	branch = midas
+[submodule "LIBERO-PRO"]
+	path = LIBERO-PRO
+	url = https://github.com/shreyas-kowshik/LIBERO-PRO.git
+	branch = midas
+[submodule "robocasa"]
+	path = robocasa
+	url = https://github.com/shreyas-kowshik/robocasa.git
+	branch = midas
