@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Shared OpenPI BC runner. config.py owns the hyperparameters.
-# Source your experiments.env before running/submitting. See README.md beside this script.
+# Source your experiments.env before running. See README.md beside this script.
 set -euo pipefail
 
 if [[ $# -ne 1 || "${1:-}" == --help || "${1:-}" == -h ]]; then
@@ -84,12 +84,7 @@ done
 if [[ -n "${OPENPI_PYTHON_BIN:-}" ]]; then
     PYTHON_BIN="$OPENPI_PYTHON_BIN"
 else
-    if [[ "$BENCHMARK" == libero ]]; then
-        midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-${MIDAS_DATA_ROOT:+$MIDAS_DATA_ROOT/conda_envs/}midas-libero}"
-    else
-        midas_activate_conda "${MIDAS_ROBOCASA_CONDA_ENV:-${MIDAS_DATA_ROOT:+$MIDAS_DATA_ROOT/conda_envs/}midas-robocasa}"
-    fi
-    PYTHON_BIN=python
+    midas_select_python "$BENCHMARK"
 fi
 
 export PYTHONPATH="$MIDAS_REPO_DIR/openpi/src:$MIDAS_REPO_DIR/openpi/packages/openpi-client/src${PYTHONPATH:+:$PYTHONPATH}"
@@ -104,7 +99,7 @@ unset JAX_PLATFORMS
 cd "$MIDAS_REPO_DIR/openpi"
 
 SEED="${OPENPI_BC_SEED:-$DEFAULT_SEED}"
-RUN_ID="${SLURM_JOB_ID:-$(date -u +%Y%m%dT%H%M%S)_$$}"
+RUN_ID="${MIDAS_RUN_ID:-$(date -u +%Y%m%dT%H%M%S)_$$}"
 EXP_NAME="${OPENPI_BC_EXP_NAME:-${RUN_PREFIX}_v1_s${SEED}_${RUN_ID}}"
 if [[ "$EXP_NAME" == */* || "$EXP_NAME" == . || "$EXP_NAME" == .. ]]; then
     echo "OPENPI_BC_EXP_NAME must be a single directory name." >&2
@@ -141,8 +136,7 @@ case "${OPENPI_BC_WANDB_ENABLED:-1}" in
         ;;
 esac
 
-# A requeue keeps the same Slurm job ID/run name and restores any completed
-# checkpoint. A separately submitted job receives a new name. Never overwrite.
+# New invocations use a unique name. Reuse OPENPI_BC_EXP_NAME to resume a run.
 if [[ -d "$RUN_DIR" ]]; then
     TRAIN_ARGS+=(--resume)
     echo "Resuming BC run: $RUN_DIR"

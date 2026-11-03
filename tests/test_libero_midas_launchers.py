@@ -1,4 +1,4 @@
-"""Validate all LIBERO MiDAS launch commands without GPUs or Slurm submission."""
+"""Validate all LIBERO MiDAS launch commands without GPUs or starting training."""
 
 import ast
 import json
@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 
@@ -35,8 +34,8 @@ def options(arguments):
 
 
 def reference_options():
-    source = (LAUNCHERS / "legacy/run_midas_task8_both_mokapots_paper_v1.slurm").read_text()
-    command = source[source.index("python -u -m training.launch_train_sim"):]
+    source = (LAUNCHERS / "legacy/run_midas_task8_both_mokapots_paper_v1.sh").read_text()
+    command = source[source.index('"$PYTHON_BIN" -u -m training.launch_train_sim'):]
     tokens = shlex.split(command.replace("\\\n", ""))
     assert tokens[-1] == "${RESUME_ARGS[@]}"
     return options(tokens[4:-1])
@@ -58,7 +57,7 @@ def launcher_env(tmp_path):
     fake_python.chmod(0o755)
     environment = {
         key: value for key, value in os.environ.items()
-        if not key.startswith(("MIDAS_", "OPENPI_", "WANDB_", "SLURM_", "JAX_"))
+        if not key.startswith(("MIDAS_", "OPENPI_", "WANDB_", "JAX_"))
         and key not in {"T_CKPT", "DEMO_HDF5", "LIBERO_CONFIG_PATH"}
     }
     checkpoint = tmp_path / "bc/16000"
@@ -76,7 +75,7 @@ def launcher_env(tmp_path):
         MIDAS_TEST_CALL=str(tmp_path / "call.json"),
         T_CKPT=str(checkpoint),
         WANDB_ENTITY="midas-test-entity",
-        SLURM_JOB_ID="12345",
+        MIDAS_RUN_ID="12345",
         LIBERO_CONFIG_PATH=str(tmp_path / "libero-config"),
         CUDA_VISIBLE_DEVICES="3",
         JAX_PLATFORMS="cpu",
@@ -86,11 +85,9 @@ def launcher_env(tmp_path):
 
 def launch(task_id, environment, tmp_path):
     slug, _ = TASKS[task_id]
-    script = LAUNCHERS / f"run_midas_task{task_id}_{slug}_ep1.slurm"
-    spooled_script = tmp_path / "slurm_script"
-    shutil.copyfile(script, spooled_script)
+    script = LAUNCHERS / f"run_midas_task{task_id}_{slug}_ep1.sh"
     result = subprocess.run(
-        ["bash", str(spooled_script)], cwd=tmp_path, env=environment,
+        ["bash", str(script)], cwd=tmp_path, env=environment,
         capture_output=True, text=True,
     )
     return result
@@ -131,14 +128,13 @@ def test_all_task_launchers_keep_original_hyperparameters(
     assert options(record["args"][3:]) == expected
     assert record["cwd"] == str(ROOT)
     assert record["output_parent"] == str(output_parent)
-    assert record["gpu_mask"] == "3"  # Never replace Slurm's GPU mask with 0.
+    assert record["gpu_mask"] == "3"  # Never replace the selected GPU mask with 0.
     assert record["platform"] is None
 
 
-def test_overrides_and_repository_submission_fallback(launcher_env, tmp_path):
+def test_overrides_and_repository_location_fallback(launcher_env, tmp_path):
     launcher_env.pop("MIDAS_REPO_DIR")
     launcher_env.update(
-        SLURM_SUBMIT_DIR=str(ROOT),
         MIDAS_SEED="11",
         MIDAS_EXP_NAME_OVERRIDE="task8_seed11_custom",
         MIDAS_EXP_DIR=str(tmp_path / "custom-runs"),
@@ -188,7 +184,7 @@ def test_configs_match_the_benchmark_task_instructions():
     benchmark = ROOT / "LIBERO-PRO/libero/libero/benchmark/libero_suite_task_map.py"
     assignment = ast.parse(benchmark.read_text()).body[0]
     tasks = ast.literal_eval(assignment.value)["libero_10"]
-    assert len(list(LAUNCHERS.glob("*.slurm"))) == 10
+    assert len(list(LAUNCHERS.glob("run_midas_task*.sh"))) == 10
     for task_id, (slug, _) in enumerate(TASKS):
         config = configs[f"pi05_libero10_{slug}_ep1"]
         data_kwargs = {kw.arg: kw.value for kw in config["data"].keywords}
@@ -197,12 +193,11 @@ def test_configs_match_the_benchmark_task_instructions():
         assert ast.literal_eval(base_kwargs["filter_prompt"]) == instruction
 
 
-def test_legacy_script_and_watchdog_references_still_exist():
+def test_legacy_script_references_still_exist():
     scripts = list((LAUNCHERS / "legacy").glob("*"))
-    assert len(scripts) == 10
-    scripts.append(ROOT / "experiments/midas_watchdog.slurm")
+    assert len(scripts) == 9
     for script in scripts:
         source = script.read_text()
-        assert "$SCRIPT_DIR/../../.." in source or script.name == "midas_watchdog.slurm"
+        assert "$SCRIPT_DIR/../../.." in source
         for reference in re.findall(r'\$REPO_DIR/(experiments/[^"\s]+)', source):
             assert (ROOT / reference).is_file(), (script, reference)

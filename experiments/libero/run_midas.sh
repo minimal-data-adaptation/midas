@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Shared MiDAS settings from the original task-8 paper_v1 launcher.
-# Per-task .slurm files provide the task ID, OpenPI BC config, and demo filename.
+# Per-task .sh files provide the task ID, OpenPI BC config, and demo filename.
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
     echo "Usage: bash run_midas.sh <task-id> <openpi-config> <demo-filename>" >&2
-    echo "Normally submit a task-specific .slurm file; see README.md." >&2
+    echo "Normally run a task-specific .sh file; see README.md." >&2
     exit 2
 fi
 TASK_ID="$1"
@@ -48,7 +48,7 @@ if [[ ! "$SEED" =~ ^[0-9]+$ ]]; then
 fi
 TASK_SLUG="${T_CONFIG#pi05_libero10_}"
 TASK_SLUG="${TASK_SLUG%_ep1}"
-RUN_ID="${SLURM_JOB_ID:-$(date -u +%Y%m%dT%H%M%S)_$$}"
+RUN_ID="${MIDAS_RUN_ID:-$(date -u +%Y%m%dT%H%M%S)_$$}"
 EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_pi05_base-ep1-${TASK_SLUG}-vlm-a-exec-paper_v1-s${SEED}-${RUN_ID}}"
 if [[ "$EXP_NAME" == */* || "$EXP_NAME" == . || "$EXP_NAME" == .. ]]; then
     echo "MIDAS_EXP_NAME_OVERRIDE must be a single directory name." >&2
@@ -59,19 +59,14 @@ if [[ "$MIDAS_EXP_DIR" != /* ]]; then
     echo "MIDAS_EXP_DIR must be an absolute path." >&2
     exit 2
 fi
-: "${WANDB_ENTITY:?Set WANDB_ENTITY before submitting this job}"
+: "${WANDB_ENTITY:?Set WANDB_ENTITY before running this script}"
 export WANDB_ENTITY
 
-if [[ -n "${MIDAS_PYTHON_BIN:-}" ]]; then
-    PYTHON_BIN="$MIDAS_PYTHON_BIN"
-else
-    midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-libero}"
-    PYTHON_BIN=python
-fi
+midas_select_python libero
 
 cd "$MIDAS_REPO_DIR"
 mkdir -p "$MIDAS_EXP_DIR"
-# Keep the GPU mask assigned by Slurm; EGL uses device 0 within that allocation.
+# Keep the GPU mask assigned by the environment; EGL uses device 0 within that selection.
 export MUJOCO_EGL_DEVICE_ID="${MUJOCO_EGL_DEVICE_ID:-0}"
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
@@ -83,7 +78,7 @@ export PYTHONNOUSERSITE=1
 unset JAX_PLATFORMS
 mkdir -p "$LIBERO_CONFIG_PATH"
 
-# Requeues reuse their job ID/name and resume the latest saved training state.
+# Reuse MIDAS_EXP_NAME_OVERRIDE to resume the latest saved training state.
 RESUME_ARGS=()
 RUN_DIR="$MIDAS_EXP_DIR/$EXP_NAME"
 if compgen -G "$RUN_DIR/train_state/*.json" > /dev/null; then

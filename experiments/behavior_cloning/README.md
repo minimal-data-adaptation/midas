@@ -1,45 +1,45 @@
 # Behavior cloning
 
-Uses the 10 one-demo LIBERO-10 configs and 3 RoboCasa BC configs in
-`openpi/src/openpi/training/config.py`. No MiDAS residual training is run.
+Scripts use the 10 one-demo LIBERO-10 configs and 3 standalone RoboCasa BC
+configs in `openpi/src/openpi/training/config.py`.
 
 ## Setup
 
-Install the matching environment using the repository README, then:
+From the repository root, set the paths shown in the main README:
 
 ```bash
-source "${XDG_CONFIG_HOME:-$HOME/.config}/midas/experiments.env"
-cd "$MIDAS_REPO_DIR"
+export MIDAS_REPO_DIR="$PWD"
+export MIDAS_DATA_ROOT="/absolute/path/to/writable/storage"
+export WANDB_ENTITY="your-wandb-username-or-team"
 ```
 
-Set absolute `OPENPI_ASSETS_ROOT` and `OPENPI_CHECKPOINT_ROOT` paths, or set
-`MIDAS_DATA_ROOT` to use its `openpi_bc_assets` and `openpi_bc_checkpoints`
-subdirectories. RoboCasa also needs `OPENPI_DATASET_ROOT` (defaults to
-`$MIDAS_DATA_ROOT/robocasa_assets`), containing the `robocasa/v1.0/...` datasets.
-LIBERO loads `physical-intelligence/libero` through the Hugging Face cache
-(`HF_LEROBOT_HOME`); it does not need local RoboCasa data.
+Activate the matching Python environment before running. Scripts use its
+`python` by default; `OPENPI_PYTHON_BIN` can select a different interpreter.
+Use `OPENPI_BC_WANDB_ENABLED=0` to disable W&B.
 
-Set `MIDAS_LIBERO_CONDA_ENV=midas-libero` and
-`MIDAS_ROBOCASA_CONDA_ENV=midas-robocasa`, or set `OPENPI_PYTHON_BIN` to the
-absolute path of the matching environment's Python. Set `WANDB_ENTITY` and run
-`wandb login`, or use `OPENPI_BC_WANDB_ENABLED=0`.
+By default, assets and checkpoints go under `$MIDAS_DATA_ROOT/openpi_bc_assets`
+and `$MIDAS_DATA_ROOT/openpi_bc_checkpoints`. Override with absolute
+`OPENPI_ASSETS_ROOT` and `OPENPI_CHECKPOINT_ROOT` paths if desired.
+
+RoboCasa needs `OPENPI_DATASET_ROOT` (default:
+`$MIDAS_DATA_ROOT/robocasa_assets`), containing `robocasa/v1.0/...`.
+LIBERO loads `physical-intelligence/libero` through the Hugging Face cache.
 
 ## LIBERO
 
-Run the both-moka-pots task directly on an allocated GPU:
+```bash
+conda activate midas-libero
+bash experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.sh
+```
+
+Or pass a config directly:
 
 ```bash
 bash experiments/behavior_cloning/libero/run_bc.sh pi05_libero10_both_mokapots_stove_ep1
 ```
 
-Or submit to preempt (one GPU by default; this example requests four):
-
-```bash
-sbatch --gres=gpu:4 --export=ALL experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.slurm
-```
-
-Each task has a launcher under `libero/`. Pass `pi05_libero10_<task>_ep1` to
-`libero/run_bc.sh`, or submit `libero/run_bc_<task>_ep1.slurm`:
+Each task has `libero/run_bc_<task>_ep1.sh` and config
+`pi05_libero10_<task>_ep1`:
 
 | Task | `<task>` |
 | --- | --- |
@@ -54,56 +54,45 @@ Each task has a launcher under `libero/`. Pass `pi05_libero10_<task>_ep1` to
 | 8 | `both_mokapots_stove` |
 | 9 | `yellow_white_mug_microwave` |
 
-Defaults: seed 42, batch size 32, 50,000 training steps, zero loader workers.
-These configs select one demo using the task filter; they do not pin episode 86.
+Defaults: seed 42, batch size 32, 50,000 steps. The moka-pot config pins episode 86;
+the mug/chocolate-pudding config pins episode 11. The other configs select the
+first matching demonstration.
 
 ## RoboCasa
 
-Run directly on an allocated GPU:
+Choose one task:
 
 ```bash
-bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32
-bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_fridge_drawer_to_shelf_l50_s37
-bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_prepare_coffee_l25_s29
+conda activate midas-robocasa
+bash experiments/behavior_cloning/robocasa/run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.sh
+bash experiments/behavior_cloning/robocasa/run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.sh
+bash experiments/behavior_cloning/robocasa/run_bc_prepare_coffee_l25_s29.sh
 ```
 
-Or submit separate preempt jobs:
+Defaults: seed 0, batch size 64, 100,000 steps. Instructions come from the
+demonstrations; the runner checks the dataset/prompt trace before training.
 
-```bash
-sbatch --gres=gpu:4 --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.slurm
-sbatch --gres=gpu:4 --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.slurm
-sbatch --gres=gpu:4 --export=ALL experiments/behavior_cloning/robocasa/run_bc_prepare_coffee_l25_s29.slurm
-```
-
-Defaults: seed 0, batch size 64, 100,000 training steps, four loader workers.
-The runner checks the dataset/prompt trace before training. Instructions come
-from the demonstrations; none are supplied as launcher overrides.
-
-## Run names and outputs
+## Outputs and overrides
 
 Missing normalization statistics are computed on CPU before GPU training.
-All hyperparameters stay at their config values unless explicitly overridden.
-Slurm `.out`/`.err` logs go in the submission directory.
+Hyperparameters stay at their config values unless overridden. Training uses
+the visible GPUs; select them with `CUDA_VISIBLE_DEVICES` when needed.
 
 ```text
 LIBERO:   $OPENPI_CHECKPOINT_ROOT/pi05_checkpoints_libero10/<config>/<experiment>/<step>/
 RoboCasa: $OPENPI_CHECKPOINT_ROOT/robocasa_bc/<config>/<experiment>/<step>/
 ```
 
-Run names include the seed and Slurm job ID (timestamp/PID for direct runs).
-New submissions use new directories. Requeues resume the same directory;
-existing checkpoints are never overwritten.
-
-Optional overrides:
+Default experiment names include the seed and a timestamp/PID. New invocations
+use separate directories. Set `OPENPI_BC_EXP_NAME` to reuse and resume an
+existing run. Output is printed to the terminal; redirect it to a file if needed.
 
 ```bash
-export OPENPI_BC_SEED=11
-export OPENPI_BC_EXP_NAME=both_mokapots_seed11  # Reuse this name only to resume this run.
-export OPENPI_BC_NUM_TRAIN_STEPS=16000
-sbatch --gres=gpu:4 --export=ALL experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.slurm
+OPENPI_BC_SEED=11 OPENPI_BC_EXP_NAME=both_mokapots_seed11 \
+OPENPI_BC_NUM_TRAIN_STEPS=16000 CUDA_VISIBLE_DEVICES=0,1,2,3 \
+  bash experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.sh
 ```
 
 Also supported: `OPENPI_BC_BATCH_SIZE`, `OPENPI_BC_NUM_WORKERS`,
-`OPENPI_BC_SAVE_INTERVAL`, and `OPENPI_BC_FSDP_DEVICES` (default 1; data parallel
-across the allocated GPUs). Global batch size must divide evenly across GPUs;
-FSDP devices must divide the allocated GPU count.
+`OPENPI_BC_SAVE_INTERVAL`, and `OPENPI_BC_FSDP_DEVICES` (default 1).
+The global batch size must be divisible by the visible GPU count.

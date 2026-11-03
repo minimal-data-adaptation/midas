@@ -1,10 +1,9 @@
-"""Exercise the BC launchers without submitting jobs or starting training."""
+"""Exercise the BC launchers without starting training."""
 
 import ast
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
@@ -15,14 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCHERS = ROOT / "experiments/behavior_cloning/robocasa"
 CASES = [
     (
-        "run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.slurm",
+        "run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.sh",
         "pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32",
     ),
     (
-        "run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.slurm",
+        "run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.sh",
         "pi05_robocasa_bc_fridge_drawer_to_shelf_l50_s37",
     ),
-    ("run_bc_prepare_coffee_l25_s29.slurm", "pi05_robocasa_bc_prepare_coffee_l25_s29"),
+    ("run_bc_prepare_coffee_l25_s29.sh", "pi05_robocasa_bc_prepare_coffee_l25_s29"),
 ]
 
 LIBERO_LAUNCHERS = ROOT / "experiments/behavior_cloning/libero"
@@ -70,7 +69,7 @@ def launcher_env(tmp_path):
     environment = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("MIDAS_", "OPENPI_", "WANDB_", "SLURM_", "JAX_"))
+        if not key.startswith(("MIDAS_", "OPENPI_", "WANDB_", "JAX_"))
     }
     environment.update(
         MIDAS_REPO_DIR=str(ROOT),
@@ -79,7 +78,7 @@ def launcher_env(tmp_path):
         OPENPI_CHECKPOINT_ROOT=str(tmp_path / "checkpoints"),
         OPENPI_PYTHON_BIN=str(fake_python),
         WANDB_ENTITY="bc-test-entity",
-        SLURM_JOB_ID="12345",
+        MIDAS_RUN_ID="12345",
         JAX_PLATFORMS="cpu",
         BC_TEST_CALLS=str(tmp_path / "calls.jsonl"),
     )
@@ -98,7 +97,7 @@ def run_launcher(script, environment, tmp_path):
 
 @pytest.mark.parametrize(("filename", "config"), CASES)
 @pytest.mark.parametrize("resume", [False, True])
-def test_task_launchers_preserve_configs_and_handle_requeues(
+def test_task_launchers_preserve_configs_and_handle_resume(
     filename, config, resume, launcher_env, tmp_path
 ):
     exp_name = f"{config.removeprefix('pi05_')}_v1_s0_12345"
@@ -109,10 +108,7 @@ def test_task_launchers_preserve_configs_and_handle_requeues(
         stats.parent.mkdir(parents=True)
         stats.write_text("existing statistics")
 
-    # Slurm runs a spooled copy, not the file in the repository.
-    spooled_script = tmp_path / "slurm_script"
-    shutil.copyfile(LAUNCHERS / filename, spooled_script)
-    calls = run_launcher(spooled_script, launcher_env, tmp_path)
+    calls = run_launcher(LAUNCHERS / filename, launcher_env, tmp_path)
     if not resume:
         assert calls[0]["args"] == ["scripts/compute_norm_stats.py", "--config-name", config]
         assert calls[0]["platform"] == "cpu"
@@ -172,12 +168,9 @@ def test_overrides_and_storage_defaults(launcher_env, tmp_path):
     ).is_file()
 
 
-def test_repository_root_submission_fallback(launcher_env, tmp_path):
+def test_repository_location_fallback(launcher_env, tmp_path):
     launcher_env.pop("MIDAS_REPO_DIR")
-    launcher_env["SLURM_SUBMIT_DIR"] = str(ROOT)
-    spooled_script = tmp_path / "slurm_script"
-    shutil.copyfile(LAUNCHERS / CASES[0][0], spooled_script)
-    calls = run_launcher(spooled_script, launcher_env, tmp_path)
+    calls = run_launcher(LAUNCHERS / CASES[0][0], launcher_env, tmp_path)
     assert calls[-1]["args"][1] == CASES[0][1]
 
 
@@ -198,7 +191,7 @@ def test_invalid_experiment_name_fails_before_commands(invalid, launcher_env, tm
 
 @pytest.mark.parametrize("task", LIBERO_TASKS)
 @pytest.mark.parametrize("resume", [False, True])
-def test_libero_launchers_preserve_configs_and_handle_requeues(
+def test_libero_launchers_preserve_configs_and_handle_resume(
     task, resume, launcher_env, tmp_path
 ):
     # LIBERO uses the Hugging Face dataset, not a RoboCasa data directory.
@@ -218,9 +211,7 @@ def test_libero_launchers_preserve_configs_and_handle_requeues(
         stats.parent.mkdir(parents=True)
         stats.write_text("existing statistics")
 
-    spooled_script = tmp_path / "slurm_script"
-    shutil.copyfile(LIBERO_LAUNCHERS / f"run_bc_{task}_ep1.slurm", spooled_script)
-    calls = run_launcher(spooled_script, launcher_env, tmp_path)
+    calls = run_launcher(LIBERO_LAUNCHERS / f"run_bc_{task}_ep1.sh", launcher_env, tmp_path)
     expected = ["scripts/train.py", config, "--exp-name", exp_name, "--seed", "42"]
     if resume:
         expected.append("--resume")

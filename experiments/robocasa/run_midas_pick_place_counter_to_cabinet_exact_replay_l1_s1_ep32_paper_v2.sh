@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=midas_rc_cab_a7_s0_r1
-#SBATCH --nodes=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=256G
-#SBATCH --time=48:00:00
-#SBATCH --partition=preempt
-#SBATCH --qos=preempt_qos
-#SBATCH --requeue
-#SBATCH --exclude=babel-w9-26,babel-n5-20
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
 
 set -euo pipefail
 
@@ -19,27 +7,26 @@ set -euo pipefail
 # 0.025 m object-position noise.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+REPO_DIR="${MIDAS_REPO_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
 export MIDAS_REPO_DIR="$REPO_DIR"
 # shellcheck source=../../scripts/experiment_env.sh
 source "$REPO_DIR/scripts/experiment_env.sh"
 midas_require_storage_roots
-midas_activate_conda "${MIDAS_ROBOCASA_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-robocasa}"
+RUN_ID="${MIDAS_RUN_ID:-$(date -u +%Y%m%dT%H%M%S)_$$}"
+midas_select_python robocasa
 
-EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_rc_pnp_cab_er_l1s1_ep32_paper_v2_s0_a7_r1_seed_repro_test}"
+EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_rc_pnp_cab_er_l1s1_ep32_paper_v2_s0_a7_r1_seed_repro_test_${RUN_ID}}"
 export MIDAS_EXP_DIR="${MIDAS_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/robocasa/pi05_base_v1}"
 
 cd "$REPO_DIR"
 mkdir -p "$MIDAS_EXP_DIR"
 
-export CUDA_VISIBLE_DEVICES=0
-export MUJOCO_EGL_DEVICE_ID=0
-export DISPLAY=:0
+export MUJOCO_EGL_DEVICE_ID="${MUJOCO_EGL_DEVICE_ID:-0}"
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
-export OPENPI_DATA_HOME=/data/hf_cache/pi-models/openpi
+export OPENPI_DATA_HOME="${OPENPI_DATA_HOME:-$MIDAS_DATA_ROOT/openpi_cache}"
 export OPENPI_DATASET_ROOT="${OPENPI_DATASET_ROOT:-$MIDAS_DATA_ROOT/robocasa_assets}"
-: "${ROBOCASA_EVAL_DATA_ROOT:?Set ROBOCASA_EVAL_DATA_ROOT before submitting this job}"
+: "${ROBOCASA_EVAL_DATA_ROOT:?Set ROBOCASA_EVAL_DATA_ROOT before running this script}"
 export ROBOCASA_EVAL_DATA_ROOT
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
@@ -47,14 +34,13 @@ export PYTHONUNBUFFERED=1
 export PYTHONNOUSERSITE=1
 ROBOCASA_SOURCE_DIR="${ROBOCASA_SOURCE_DIR:-$REPO_DIR/robocasa}"
 export PYTHONPATH="$ROBOCASA_SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}"
-export WANDB_ENTITY="${MIDAS_WANDB_ENTITY:-skowshik-carnegie-mellon-university}"
+export WANDB_ENTITY="${WANDB_ENTITY:-${MIDAS_WANDB_ENTITY:-}}"
+: "${WANDB_ENTITY:?Set WANDB_ENTITY to your W&B username or team}"
 
 T_CONFIG=midas_pi05_robocasa_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32
-SOURCE_CONFIG=pi05_robocasa_single_task_lora_exact_replay_l1_s1_ep32
-MIDAS_ROBOCASA_POLICY_ROOT="${MIDAS_ROBOCASA_POLICY_ROOT:-$MIDAS_DATA_ROOT/pi05_robocasa}"
-T_CKPT="${T_CKPT:-$MIDAS_ROBOCASA_POLICY_ROOT/${SOURCE_CONFIG}/${SOURCE_CONFIG}-v1/8000}"
+: "${T_CKPT:?Set T_CKPT to the frozen BC checkpoint directory for this task}"
 
-# Requeued jobs resume once a complete agent/replay snapshot exists.
+# Reusing the experiment name resumes a complete agent/replay snapshot.
 RESUME_ARGS=()
 RUN_DIR="$MIDAS_EXP_DIR/$EXP_NAME"
 if compgen -G "$RUN_DIR/train_state/*.json" > /dev/null; then
@@ -64,7 +50,7 @@ else
     echo "Starting fresh MIDAS run in $RUN_DIR"
 fi
 
-python -u -m training.launch_train_sim \
+"$PYTHON_BIN" -u -m training.launch_train_sim \
     --algo midas \
     --env robocasa \
     --prefix midas-robocasa-pick_place_counter_to_cabinet-exact_replay_l1_s1_ep32-seed0 \
