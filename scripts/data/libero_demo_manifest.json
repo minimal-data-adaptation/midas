@@ -1,0 +1,503 @@
+{
+  "format_version": 1,
+  "description": "LIBERO demo selections: output filenames, global episode IDs, frame counts, and task instructions.",
+  "upstream_repo": "physical-intelligence/libero",
+  "image_size": 224,
+  "query_frequency": 5,
+  "state_dim": 8,
+  "action_dim": 7,
+  "files": [
+    {
+      "filename": "libero10_task0_alphabet_soup_tomato_sauce_basket_ep1.hdf5",
+      "task_id": 0,
+      "task_description": "put both the alphabet soup and the tomato sauce in the basket",
+      "episode_indices": [
+        8
+      ],
+      "episode_lengths": [
+        259
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task0_alphabet_soup_tomato_sauce_basket_ep3.hdf5",
+      "task_id": 0,
+      "task_description": "put both the alphabet soup and the tomato sauce in the basket",
+      "episode_indices": [
+        8,
+        13,
+        26
+      ],
+      "episode_lengths": [
+        259,
+        285,
+        296
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task0_alphabet_soup_tomato_sauce_basket_ep5.hdf5",
+      "task_id": 0,
+      "task_description": "put both the alphabet soup and the tomato sauce in the basket",
+      "episode_indices": [
+        8,
+        13,
+        26,
+        39,
+        69
+      ],
+      "episode_lengths": [
+        259,
+        285,
+        296,
+        288,
+        292
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task1_cream_cheese_butter_basket_ep1.hdf5",
+      "task_id": 1,
+      "task_description": "put both the cream cheese box and the butter in the basket",
+      "episode_indices": [
+        12
+      ],
+      "episode_lengths": [
+        279
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task1_cream_cheese_butter_basket_ep3.hdf5",
+      "task_id": 1,
+      "task_description": "put both the cream cheese box and the butter in the basket",
+      "episode_indices": [
+        12,
+        17,
+        24
+      ],
+      "episode_lengths": [
+        279,
+        249,
+        241
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task1_cream_cheese_butter_basket_ep5.hdf5",
+      "task_id": 1,
+      "task_description": "put both the cream cheese box and the butter in the basket",
+      "episode_indices": [
+        12,
+        17,
+        24,
+        42,
+        43
+      ],
+      "episode_lengths": [
+        279,
+        249,
+        241,
+        244,
+        272
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task2_stove_moka_pot_ep1.hdf5",
+      "task_id": 2,
+      "task_description": "turn on the stove and put the moka pot on it",
+      "episode_indices": [
+        6
+      ],
+      "episode_lengths": [
+        279
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task2_stove_moka_pot_ep3.hdf5",
+      "task_id": 2,
+      "task_description": "turn on the stove and put the moka pot on it",
+      "episode_indices": [
+        6,
+        38,
+        40
+      ],
+      "episode_lengths": [
+        279,
+        261,
+        228
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task2_stove_moka_pot_ep5.hdf5",
+      "task_id": 2,
+      "task_description": "turn on the stove and put the moka pot on it",
+      "episode_indices": [
+        6,
+        38,
+        40,
+        45,
+        48
+      ],
+      "episode_lengths": [
+        279,
+        261,
+        228,
+        267,
+        278
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task3_black_bowl_drawer_ep1.hdf5",
+      "task_id": 3,
+      "task_description": "put the black bowl in the bottom drawer of the cabinet and close it",
+      "episode_indices": [
+        14
+      ],
+      "episode_lengths": [
+        257
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task3_black_bowl_drawer_ep3.hdf5",
+      "task_id": 3,
+      "task_description": "put the black bowl in the bottom drawer of the cabinet and close it",
+      "episode_indices": [
+        14,
+        15,
+        16
+      ],
+      "episode_lengths": [
+        257,
+        242,
+        248
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task3_black_bowl_drawer_ep5.hdf5",
+      "task_id": 3,
+      "task_description": "put the black bowl in the bottom drawer of the cabinet and close it",
+      "episode_indices": [
+        14,
+        15,
+        16,
+        31,
+        32
+      ],
+      "episode_lengths": [
+        257,
+        242,
+        248,
+        241,
+        229
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task4_white_mug_left_yellow_mug_right_ep1.hdf5",
+      "task_id": 4,
+      "task_description": "put the white mug on the left plate and put the yellow and white mug on the right plate",
+      "episode_indices": [
+        0
+      ],
+      "episode_lengths": [
+        214
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task4_white_mug_left_yellow_mug_right_ep3.hdf5",
+      "task_id": 4,
+      "task_description": "put the white mug on the left plate and put the yellow and white mug on the right plate",
+      "episode_indices": [
+        0,
+        18,
+        22
+      ],
+      "episode_lengths": [
+        214,
+        276,
+        263
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task4_white_mug_left_yellow_mug_right_ep5.hdf5",
+      "task_id": 4,
+      "task_description": "put the white mug on the left plate and put the yellow and white mug on the right plate",
+      "episode_indices": [
+        0,
+        18,
+        22,
+        33,
+        58
+      ],
+      "episode_lengths": [
+        214,
+        276,
+        263,
+        259,
+        253
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task5_book_caddy_ep1.hdf5",
+      "task_id": 5,
+      "task_description": "pick up the book and place it in the back compartment of the caddy",
+      "episode_indices": [
+        27
+      ],
+      "episode_lengths": [
+        234
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task5_book_caddy_ep3.hdf5",
+      "task_id": 5,
+      "task_description": "pick up the book and place it in the back compartment of the caddy",
+      "episode_indices": [
+        27,
+        28,
+        47
+      ],
+      "episode_lengths": [
+        234,
+        195,
+        182
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task5_book_caddy_ep5.hdf5",
+      "task_id": 5,
+      "task_description": "pick up the book and place it in the back compartment of the caddy",
+      "episode_indices": [
+        27,
+        28,
+        47,
+        55,
+        61
+      ],
+      "episode_lengths": [
+        234,
+        195,
+        182,
+        178,
+        180
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task6_white_mug_plate_choc_pudding_ep1.hdf5",
+      "task_id": 6,
+      "task_description": "put the white mug on the plate and put the chocolate pudding to the right of the plate",
+      "episode_indices": [
+        1
+      ],
+      "episode_lengths": [
+        284
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task6_white_mug_plate_choc_pudding_ep11.hdf5",
+      "task_id": 6,
+      "task_description": "put the white mug on the plate and put the chocolate pudding",
+      "episode_indices": [
+        11
+      ],
+      "episode_lengths": [
+        218
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task6_white_mug_plate_choc_pudding_ep3_filtered.hdf5",
+      "task_id": 6,
+      "task_description": "put the white mug on the plate and put the chocolate pudding to the right of the plate",
+      "episode_indices": [
+        1,
+        4,
+        11
+      ],
+      "episode_lengths": [
+        284,
+        278,
+        218
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task6_white_mug_plate_choc_pudding_ep5_filtered.hdf5",
+      "task_id": 6,
+      "task_description": "put the white mug on the plate and put the chocolate pudding to the right of the plate",
+      "episode_indices": [
+        1,
+        4,
+        5,
+        11,
+        19
+      ],
+      "episode_lengths": [
+        284,
+        278,
+        240,
+        218,
+        249
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task7_alphabet_soup_cream_cheese_basket_ep1.hdf5",
+      "task_id": 7,
+      "task_description": "put both the alphabet soup and the cream cheese box in the basket",
+      "episode_indices": [
+        7
+      ],
+      "episode_lengths": [
+        272
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task7_alphabet_soup_cream_cheese_basket_ep3.hdf5",
+      "task_id": 7,
+      "task_description": "put both the alphabet soup and the cream cheese box in the basket",
+      "episode_indices": [
+        7,
+        9,
+        25
+      ],
+      "episode_lengths": [
+        272,
+        302,
+        255
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task7_alphabet_soup_cream_cheese_basket_ep5.hdf5",
+      "task_id": 7,
+      "task_description": "put both the alphabet soup and the cream cheese box in the basket",
+      "episode_indices": [
+        7,
+        9,
+        25,
+        29,
+        30
+      ],
+      "episode_lengths": [
+        272,
+        302,
+        255,
+        288,
+        284
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task8_moka_pots_stove_ep3_filtered.hdf5",
+      "task_id": 8,
+      "task_description": "put both moka pots on the stove",
+      "episode_indices": [
+        10,
+        20,
+        86
+      ],
+      "episode_lengths": [
+        383,
+        359,
+        421
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task8_moka_pots_stove_ep5_filtered.hdf5",
+      "task_id": 8,
+      "task_description": "put both moka pots on the stove",
+      "episode_indices": [
+        10,
+        20,
+        23,
+        46,
+        86
+      ],
+      "episode_lengths": [
+        383,
+        359,
+        455,
+        409,
+        421
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task8_put_both_moka_pots_on_the_stove_ep86.hdf5",
+      "task_id": 8,
+      "task_description": "put both moka pots on the stove",
+      "episode_indices": [
+        86
+      ],
+      "episode_lengths": [
+        421
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task9_yellow_white_mug_microwave_ep1.hdf5",
+      "task_id": 9,
+      "task_description": "put the yellow and white mug in the microwave and close it",
+      "episode_indices": [
+        2
+      ],
+      "episode_lengths": [
+        345
+      ],
+      "default": true
+    },
+    {
+      "filename": "libero10_task9_yellow_white_mug_microwave_ep3.hdf5",
+      "task_id": 9,
+      "task_description": "put the yellow and white mug in the microwave and close it",
+      "episode_indices": [
+        2,
+        3,
+        34
+      ],
+      "episode_lengths": [
+        345,
+        285,
+        449
+      ],
+      "default": false
+    },
+    {
+      "filename": "libero10_task9_yellow_white_mug_microwave_ep5.hdf5",
+      "task_id": 9,
+      "task_description": "put the yellow and white mug in the microwave and close it",
+      "episode_indices": [
+        2,
+        3,
+        34,
+        35,
+        44
+      ],
+      "episode_lengths": [
+        345,
+        285,
+        449,
+        353,
+        267
+      ],
+      "default": false
+    }
+  ]
+}
