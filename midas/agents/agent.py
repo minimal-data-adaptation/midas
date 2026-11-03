@@ -1,9 +1,6 @@
 import numpy as np
-import jax
-from flax import serialization
 from flax.training import checkpoints
 import orbax.checkpoint as ocp
-from typing import Any
 from flax.training.train_state import TrainState
 
 from midas.agents.common import (
@@ -101,62 +98,6 @@ class Agent(object):
             get_batch_stats(self._actor),
         )
         return np.asarray(log_probs)
-
-    def export_actor_state(self) -> dict[str, Any]:
-        """Return a host-resident actor state suitable for process transfer."""
-
-        state = {"params": jax.device_get(serialization.to_state_dict(self._actor.params))}
-        batch_stats = get_batch_stats(self._actor)
-        if batch_stats is not None:
-            state["batch_stats"] = jax.device_get(serialization.to_state_dict(batch_stats))
-        return state
-
-    def replace_actor_state(self, state: dict[str, Any]) -> None:
-        """Atomically replace actor params and mutable statistics after validation."""
-
-        if "params" not in state:
-            raise ValueError("Actor state is missing 'params'")
-
-        def _coerce_and_validate(name, current, incoming):
-            # Msgpack reconstructs mapping containers as plain dicts. Restore
-            # the exact Flax/FrozenDict container structure before comparing
-            # and swapping the state.
-            try:
-                incoming = serialization.from_state_dict(
-                    current, serialization.to_state_dict(incoming)
-                )
-            except Exception as error:
-                raise ValueError(f"Actor {name} state structure does not match") from error
-            if jax.tree_util.tree_structure(current) != jax.tree_util.tree_structure(incoming):
-                raise ValueError(f"Actor {name} PyTree structure does not match")
-            current_leaves = jax.tree_util.tree_leaves(current)
-            incoming_leaves = jax.tree_util.tree_leaves(incoming)
-            for index, (expected, actual) in enumerate(zip(current_leaves, incoming_leaves)):
-                if np.shape(expected) != np.shape(actual):
-                    raise ValueError(
-                        f"Actor {name} leaf {index} shape {np.shape(actual)} does not match "
-                        f"{np.shape(expected)}"
-                    )
-                if np.dtype(expected.dtype) != np.dtype(actual.dtype):
-                    raise ValueError(
-                        f"Actor {name} leaf {index} dtype {actual.dtype} does not match "
-                        f"{expected.dtype}"
-                    )
-            return incoming
-
-        params = _coerce_and_validate("params", self._actor.params, state["params"])
-        replacements = {"params": params}
-        current_batch_stats = get_batch_stats(self._actor)
-        incoming_batch_stats = state.get("batch_stats")
-        if current_batch_stats is None and incoming_batch_stats is not None:
-            raise ValueError("Actor does not have batch_stats, but update supplied them")
-        if current_batch_stats is not None:
-            if incoming_batch_stats is None:
-                raise ValueError("Actor update is missing required batch_stats")
-            replacements["batch_stats"] = _coerce_and_validate(
-                "batch_stats", current_batch_stats, incoming_batch_stats
-            )
-        self._actor = self._actor.replace(**replacements)
 
     @property
     def _save_dict(self):
