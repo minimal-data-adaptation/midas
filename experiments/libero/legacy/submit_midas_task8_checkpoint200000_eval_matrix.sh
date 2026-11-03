@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${MIDAS_REPO_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}"
-LAUNCHER="$REPO_DIR/experiments/libero/eval_midas_task8_both_mokapots_checkpoint200000_matrix.slurm"
+REPO_DIR="${MIDAS_REPO_DIR:-$(cd -- "$SCRIPT_DIR/../../.." && pwd)}"
+LAUNCHER="$REPO_DIR/experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint200000_matrix.slurm"
 
 cd "$REPO_DIR"
 

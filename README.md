@@ -74,37 +74,34 @@ cd "$MIDAS_REPO_DIR"
 
 ### LIBERO behavior cloning
 
-This is the one-demonstration, episode-86 config used for the both-moka-pots
-policy in the MiDAS launcher.
+One-demo training scripts for all 10 tasks are in
+[experiments/behavior_cloning](experiments/behavior_cloning/README.md).
 
 ```bash
-conda activate midas-libero
-cd "$MIDAS_REPO_DIR/openpi"
-
-CONFIG=pi05_libero10_both_mokapots_stove_ep1_ep86_filtered
-EXP_NAME=both_mokapots_ep86_bc
-
-JAX_PLATFORMS=cpu python scripts/compute_norm_stats.py --config-name "$CONFIG"
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py "$CONFIG" \
-  --exp-name "$EXP_NAME" \
-  --num-train-steps 16000
+OPENPI_BC_EXP_NAME=both_mokapots_ep1_bc OPENPI_BC_NUM_TRAIN_STEPS=16000 \
+  sbatch --gres=gpu:4 --export=ALL \
+  experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.slurm
 ```
 
 ```bash
 cd "$MIDAS_REPO_DIR"
-CONFIG=pi05_libero10_both_mokapots_stove_ep1_ep86_filtered
-EXP_NAME=both_mokapots_ep86_bc
-BC_CHECKPOINT="$OPENPI_CHECKPOINT_ROOT/pi05_checkpoints_libero10/$CONFIG/$EXP_NAME/16000"
+CONFIG=pi05_libero10_both_mokapots_stove_ep1
+EXP_NAME=both_mokapots_ep1_bc
+# Training step indices start at zero: a 16,000-step run ends at 15999.
+BC_CHECKPOINT="$OPENPI_CHECKPOINT_ROOT/pi05_checkpoints_libero10/$CONFIG/$EXP_NAME/15999"
 sbatch --export=ALL,T_CKPT="$BC_CHECKPOINT" \
-  experiments/libero/run_midas_task8_both_mokapots_paper_v1.slurm
+  experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
 ```
 
 ### LIBERO MiDAS
 
+One launcher per task: [experiments/libero](experiments/libero/README.md).
+Set `T_CKPT` to the matching task's BC checkpoint.
+
 ```bash
-sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_paper_v1.slurm
-sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_paper_v1_s11.slurm
-sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_paper_v1_s42.slurm
+sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
+MIDAS_SEED=11 sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
+MIDAS_SEED=42 sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
 ```
 
 ### RoboCasa behavior cloning
@@ -128,11 +125,11 @@ sbatch --export=ALL experiments/robocasa/run_midas_prepare_coffee_l25_s29_var1_p
 ### LIBERO
 
 ```bash
-sbatch --export=ALL experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm
-sbatch --export=ALL experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_object_perturbation.slurm
-sbatch --export=ALL experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_language_perturbation.slurm
-sbatch --export=ALL experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_position_5cm_perturbation.slurm
-bash experiments/libero/submit_midas_task8_checkpoint200000_eval_matrix.sh
+sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm
+sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_object_perturbation.slurm
+sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_language_perturbation.slurm
+sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_position_5cm_perturbation.slurm
+bash experiments/libero/legacy/submit_midas_task8_checkpoint200000_eval_matrix.sh
 ```
 
 ### RoboCasa behavior cloning

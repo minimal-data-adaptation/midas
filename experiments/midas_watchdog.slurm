@@ -123,17 +123,17 @@ ensure_job() {
 check_all_jobs() {
     ensure_job \
         libero_s0 midas_ep1_t8_paper_v1 \
-        "$REPO_DIR/experiments/libero/run_midas_task8_both_mokapots_paper_v1.slurm" \
+        "$REPO_DIR/experiments/libero/legacy/run_midas_task8_both_mokapots_paper_v1.slurm" \
         midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s0-r2 \
         "$LIBERO_EXP_DIR"
     ensure_job \
         libero_s11 midas_ep1_t8_pv1_s11 \
-        "$REPO_DIR/experiments/libero/run_midas_task8_both_mokapots_paper_v1_s11.slurm" \
+        "$REPO_DIR/experiments/libero/legacy/run_midas_task8_both_mokapots_paper_v1_s11.slurm" \
         midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s11-r2 \
         "$LIBERO_EXP_DIR"
     ensure_job \
         libero_s42 midas_ep1_t8_pv1_s42 \
-        "$REPO_DIR/experiments/libero/run_midas_task8_both_mokapots_paper_v1_s42.slurm" \
+        "$REPO_DIR/experiments/libero/legacy/run_midas_task8_both_mokapots_paper_v1_s42.slurm" \
         midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s42-r2 \
         "$LIBERO_EXP_DIR"
     ensure_job \

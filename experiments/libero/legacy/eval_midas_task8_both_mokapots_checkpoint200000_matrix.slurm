@@ -26,9 +26,9 @@ case "$MODEL_SEED" in
 esac
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../../.." && pwd)}}"
 export MIDAS_REPO_DIR="$REPO_DIR"
-# shellcheck source=../../scripts/experiment_env.sh
+# shellcheck source=../../../scripts/experiment_env.sh
 source "$REPO_DIR/scripts/experiment_env.sh"
 midas_require_storage_roots
 midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-libero}"

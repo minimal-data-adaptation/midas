@@ -12,17 +12,17 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../../.." && pwd)}}"
 export MIDAS_REPO_DIR="$REPO_DIR"
-# shellcheck source=../../scripts/experiment_env.sh
+# shellcheck source=../../../scripts/experiment_env.sh
 source "$REPO_DIR/scripts/experiment_env.sh"
 midas_require_storage_roots
 
-EVAL_LAUNCHER="$REPO_DIR/experiments/libero/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm"
+EVAL_LAUNCHER="$REPO_DIR/experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm"
 OUTPUT_DIR="${OUTPUT_DIR:-$MIDAS_DATA_ROOT/midas_evals/pi05_base_v1/midas_t8_both_mokapots_s0_ckpt250000_no_perturbations_50rollouts}"
 STATE_DIR="${STATE_DIR:-$MIDAS_DATA_ROOT/midas_evals/watchdog}"
 STATE_FILE="$STATE_DIR/midas_t8_ckpt250000_clean.state"
-WATCHDOG_SCRIPT="$REPO_DIR/experiments/libero/eval_midas_task8_checkpoint250000_watchdog.slurm"
+WATCHDOG_SCRIPT="$REPO_DIR/experiments/libero/legacy/eval_midas_task8_checkpoint250000_watchdog.slurm"
 CHECK_INTERVAL=${MIDAS_EVAL_WATCHDOG_INTERVAL:-300}
 RUN_SECONDS=10740
 INITIAL_JOB_ID=10282313

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=midas_ep1_t8_pv1_s42
+#SBATCH --job-name=midas_ep1_t8_pv1_s11
 #SBATCH --nodes=1
 #SBATCH --partition=preempt
 #SBATCH --gres=gpu:1
@@ -13,17 +13,17 @@
 set -euo pipefail
 
 # LIBERO-10, episode-1 Pi-0.5 base, task 8: put both moka pots on the stove.
-# Seed-42 replicate of run_midas_task8_both_mokapots_paper_v1.slurm.
+# Seed-11 replicate of run_midas_task8_both_mokapots_paper_v1.slurm.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../.." && pwd)}}"
+REPO_DIR="${MIDAS_REPO_DIR:-${SLURM_SUBMIT_DIR:-$(cd -- "$SCRIPT_DIR/../../.." && pwd)}}"
 export MIDAS_REPO_DIR="$REPO_DIR"
-# shellcheck source=../../scripts/experiment_env.sh
+# shellcheck source=../../../scripts/experiment_env.sh
 source "$REPO_DIR/scripts/experiment_env.sh"
 midas_require_storage_roots
 midas_activate_conda "${MIDAS_LIBERO_CONDA_ENV:-$MIDAS_DATA_ROOT/conda_envs/midas-libero}"
 
-EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s42-r2}"
+EXP_NAME="${MIDAS_EXP_NAME_OVERRIDE:-midas_pi05_base-ep1-both_mokapots-vlm-a-exec-paper_v1-s11-r2}"
 export MIDAS_EXP_DIR="${MIDAS_EXP_DIR:-$MIDAS_DATA_ROOT/midas_exps/pi05_base_v1}"
 
 cd "$REPO_DIR"
@@ -66,7 +66,7 @@ python -u -m training.launch_train_sim \
     --wandb_project libero-midas-pi05-base-v1 \
     --batch_size 64 \
     --discount 0.999 \
-    --seed 42 \
+    --seed 11 \
     --max_steps 250000 \
     --eval_interval 25000 \
     --log_interval 500 \
