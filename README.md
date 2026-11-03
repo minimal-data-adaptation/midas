@@ -49,11 +49,7 @@ Create `${XDG_CONFIG_HOME:-$HOME/.config}/midas/experiments.env`:
 ```bash
 export MIDAS_REPO_DIR="<absolute-path-to-midas>"
 export MIDAS_DATA_ROOT="<absolute-path-to-writable-storage>"
-export MIDAS_SHARED_DATA_ROOT="<absolute-path-to-shared-datasets>"
-export MIDAS_CONDA_SH="$(conda info --base)/etc/profile.d/conda.sh"
 
-export MIDAS_LIBERO_CONDA_ENV="midas-libero"
-export MIDAS_ROBOCASA_CONDA_ENV="midas-robocasa"
 
 export ROBOCASA_EVAL_DATA_ROOT="<absolute-path-to-robocasa-evaluation-data>"
 export OPENPI_DATASET_ROOT="$MIDAS_DATA_ROOT/robocasa_assets"
@@ -70,18 +66,72 @@ source "${XDG_CONFIG_HOME:-$HOME/.config}/midas/experiments.env"
 cd "$MIDAS_REPO_DIR"
 ```
 
+### Prepare Libero Demos
+
+Download the dataset:
+
+```bash
+conda activate midas-libero
+export HF_LEROBOT_HOME="$MIDAS_DATA_ROOT/lerobot"
+export LIBERO_LEROBOT_ROOT="$HF_LEROBOT_HOME/physical-intelligence/libero"
+hf download physical-intelligence/libero --repo-type dataset --revision v2.0 --local-dir "$LIBERO_LEROBOT_ROOT"
+```
+
+Create the manifest:
+
+```bash
+CONFIG=pi05_libero10_both_mokapots_stove_ep1
+python scripts/create_libero_demo_manifest.py \
+  --config-name "$CONFIG" \
+  --output "$MIDAS_DATA_ROOT/manifests/$CONFIG.json" \
+  --filename libero10_task8_put_both_moka_pots_on_the_stove_ep86.hdf5
+```
+
+Export the HDF5:
+
+```bash
+python scripts/prepare_libero_demos.py \
+  --manifest "$MIDAS_DATA_ROOT/manifests/$CONFIG.json" \
+  --dataset-root "$LIBERO_LEROBOT_ROOT" \
+  --output-dir "$MIDAS_DATA_ROOT/expert_hdf5"
+```
+
 ## Train
 
 ### LIBERO behavior cloning
 
-One-demo training scripts for all 10 tasks are in
-[experiments/behavior_cloning](experiments/behavior_cloning/README.md).
+Run from the repository root after the Configure step. Missing normalization
+statistics are computed automatically. Scripts use your active Python environment.
+Select GPUs with `CUDA_VISIBLE_DEVICES` if needed (for example, `0,1,2,3`).
+
+Run both moka pots:
 
 ```bash
-OPENPI_BC_EXP_NAME=both_mokapots_ep1_bc OPENPI_BC_NUM_TRAIN_STEPS=16000 \
-  sbatch --gres=gpu:4 --export=ALL \
-  experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.slurm
+conda activate midas-libero
+bash experiments/behavior_cloning/libero/run_bc.sh pi05_libero10_both_mokapots_stove_ep1
 ```
+
+Or choose another task (one command per task):
+
+```bash
+bash experiments/behavior_cloning/libero/run_bc_alphabet_soup_tomato_sauce_basket_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_cream_cheese_butter_basket_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_stove_mokapot_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_black_bowl_bottom_drawer_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_white_mug_plates_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_book_caddy_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_white_mug_chocolate_pudding_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_alphabet_soup_cream_cheese_basket_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_both_mokapots_stove_ep1.sh
+bash experiments/behavior_cloning/libero/run_bc_yellow_white_mug_microwave_ep1.sh
+```
+
+Checkpoints: `$OPENPI_CHECKPOINT_ROOT/pi05_checkpoints_libero10/<config>/<experiment>/<step>/`.
+More options: [BC scripts](experiments/behavior_cloning/README.md).
+
+### LIBERO MiDAS
+
+Use the named BC run above once training finishes:
 
 ```bash
 cd "$MIDAS_REPO_DIR"
@@ -89,35 +139,53 @@ CONFIG=pi05_libero10_both_mokapots_stove_ep1
 EXP_NAME=both_mokapots_ep1_bc
 # Training step indices start at zero: a 16,000-step run ends at 15999.
 BC_CHECKPOINT="$OPENPI_CHECKPOINT_ROOT/pi05_checkpoints_libero10/$CONFIG/$EXP_NAME/15999"
-sbatch --export=ALL,T_CKPT="$BC_CHECKPOINT" \
-  experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
+T_CKPT="$BC_CHECKPOINT" bash \
+  experiments/libero/run_midas_task8_both_mokapots_stove_ep1.sh
 ```
-
-### LIBERO MiDAS
 
 One launcher per task: [experiments/libero](experiments/libero/README.md).
 Set `T_CKPT` to the matching task's BC checkpoint.
 
 ```bash
-sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
-MIDAS_SEED=11 sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
-MIDAS_SEED=42 sbatch --export=ALL experiments/libero/run_midas_task8_both_mokapots_stove_ep1.slurm
+bash experiments/libero/run_midas_task8_both_mokapots_stove_ep1.sh
+MIDAS_SEED=11 bash experiments/libero/run_midas_task8_both_mokapots_stove_ep1.sh
+MIDAS_SEED=42 bash experiments/libero/run_midas_task8_both_mokapots_stove_ep1.sh
 ```
 
 ### RoboCasa behavior cloning
 
+Choose a task:
+
 ```bash
-sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.slurm
-sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.slurm
-sbatch --export=ALL experiments/behavior_cloning/robocasa/run_bc_prepare_coffee_l25_s29.slurm
+conda activate midas-robocasa
+bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_counter_to_cabinet_l1_s1_ep32
+bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_fridge_drawer_to_shelf_l50_s37
+bash experiments/behavior_cloning/robocasa/run_bc.sh pi05_robocasa_bc_prepare_coffee_l25_s29
 ```
+
+Or use the task-specific scripts:
+
+```bash
+bash experiments/behavior_cloning/robocasa/run_bc_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32.sh
+bash experiments/behavior_cloning/robocasa/run_bc_pick_place_fridge_drawer_to_shelf_l50_s37.sh
+bash experiments/behavior_cloning/robocasa/run_bc_prepare_coffee_l25_s29.sh
+```
+
+Defaults: 100,000 steps, batch size 64, seed 0. Normalization is computed if
+missing, and the dataset/prompt trace is checked before training.
+
+Checkpoints: `$OPENPI_CHECKPOINT_ROOT/robocasa_bc/<config>/<experiment>/<step>/`.
+Run names are generated automatically; each new run gets a separate directory.
 
 ### RoboCasa MiDAS
 
+Set `T_CKPT` to the matching task's frozen BC checkpoint before each command.
+
 ```bash
-sbatch --export=ALL experiments/robocasa/run_midas_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32_paper_v2.sh
-sbatch --export=ALL experiments/robocasa/run_midas_pick_place_fridge_drawer_to_shelf_l50_s37_paper_v2.slurm
-sbatch --export=ALL experiments/robocasa/run_midas_prepare_coffee_l25_s29_var1_paper_v2.slurm
+conda activate midas-robocasa
+bash experiments/robocasa/run_midas_pick_place_counter_to_cabinet_exact_replay_l1_s1_ep32_paper_v2.sh
+bash experiments/robocasa/run_midas_pick_place_fridge_drawer_to_shelf_l50_s37_paper_v2.sh
+bash experiments/robocasa/run_midas_prepare_coffee_l25_s29_var1_paper_v2.sh
 ```
 
 ## Evaluate
@@ -125,17 +193,23 @@ sbatch --export=ALL experiments/robocasa/run_midas_prepare_coffee_l25_s29_var1_p
 ### LIBERO
 
 ```bash
-sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.slurm
-sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_object_perturbation.slurm
-sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_language_perturbation.slurm
-sbatch --export=ALL experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_position_5cm_perturbation.slurm
-bash experiments/libero/legacy/submit_midas_task8_checkpoint200000_eval_matrix.sh
+conda activate midas-libero
+export CHECKPOINT_DIR="<absolute-path-to-MiDAS-checkpoint>"
+export BASE_POLICY_CHECKPOINT="<absolute-path-to-frozen-BC-checkpoint>"
+bash experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_no_perturbations.sh
+bash experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_object_perturbation.sh
+bash experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_language_perturbation.sh
+bash experiments/libero/legacy/eval_midas_task8_both_mokapots_checkpoint250000_position_5cm_perturbation.sh
+CHECKPOINT_DIR_S11="<seed-11-MiDAS-checkpoint>" CHECKPOINT_DIR_S42="<seed-42-MiDAS-checkpoint>" \
+  bash experiments/libero/legacy/run_midas_task8_checkpoint200000_eval_matrix.sh
 ```
 
 ### RoboCasa behavior cloning
 
 ```bash
-sbatch --export=ALL experiments/evals/behavior_cloning/eval_bc_pick_place_counter_to_cabinet_checkpoint8000_50rollouts.slurm
+conda activate midas-robocasa
+export BC_CHECKPOINT="<absolute-path-to-BC-checkpoint>"
+bash experiments/evals/behavior_cloning/eval_bc_pick_place_counter_to_cabinet_checkpoint8000_50rollouts.sh
 ```
 
 ## Test
