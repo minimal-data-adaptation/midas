@@ -9,11 +9,8 @@ case "$profile" in
   robocasa)
     simulator="robocasa"
     ;;
-  real)
-    simulator=""
-    ;;
   *)
-    echo "usage: $0 {libero|robocasa|real|ci-cpu}" >&2
+    echo "usage: $0 {libero|robocasa|ci-cpu}" >&2
     exit 2
     ;;
 esac
